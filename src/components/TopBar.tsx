@@ -1,5 +1,6 @@
 import { useEffect } from "react";
-import { Radio } from "lucide-react";
+import { Radio, Volume2, VolumeX } from "lucide-react";
+import { unlockAudio, silence } from "../utils/radioVoice";
 import { useMissionStore } from "../store/useMissionStore";
 import { toLatLon, formatMET } from "../utils/coords";
 
@@ -8,6 +9,13 @@ export function TopBar() {
   const row = useMissionStore((s) => s.row);
   const met = useMissionStore((s) => s.met);
   const tick = useMissionStore((s) => s.tick);
+  const comms = useMissionStore((s) => s.commsMode);
+  const toggleComms = () => {
+    const next = comms === "TEXT" ? "VOICE" : "TEXT";
+    if (next === "VOICE") unlockAudio();
+    else silence();
+    useMissionStore.setState({ commsMode: next });
+  };
 
   useEffect(() => {
     let last = performance.now();
@@ -47,6 +55,14 @@ export function TopBar() {
           <Radio size={11} className="text-telemetry" />
           1.28s
         </span>
+        <button
+          onClick={toggleComms}
+          aria-label="Toggle comms voice"
+          className={`flex items-center gap-1.5 rounded border px-2 py-0.5 transition-colors ${comms === "VOICE" ? "border-telemetry/50 bg-telemetry/10 text-telemetry" : "border-white/10 bg-well text-label hover:text-log"}`}
+        >
+          {comms === "VOICE" ? <Volume2 size={11} /> : <VolumeX size={11} />}
+          COMMS {comms === "VOICE" ? "TEXT + VOICE" : "TEXT ONLY"}
+        </button>
         <span className="rounded border border-white/10 bg-well px-2 py-0.5 text-label">
           TIME ×60
         </span>
