@@ -115,7 +115,7 @@ function buildRelief(t: TerrainData): HTMLCanvasElement {
         Math.cos(alt) * Math.sin(slope) * Math.cos(az - aspect);
       shade = Math.max(0, Math.min(1, shade));
 
-      const h = (e[i] - t.minElev) / range;
+      const h = ((e[i] ?? 0) - t.minElev) / range;
       // Dark regolith base, lifted by elevation, modulated by hillshade.
       const base = 26 + h * 90;
       const v = Math.round(base * (0.45 + 0.55 * shade));
