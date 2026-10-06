@@ -53,11 +53,12 @@ function sampleBilinear(grid: Float32Array, col: number, row: number): number {
   const fc = c - c0;
   const fr = r - r0;
   const i00 = r0 * N + c0;
-  const i10 = i00 + 1;
-  const i01 = i00 + N;
-  const i11 = i01 + 1;
-  const top = grid[i00] + (grid[i10] - grid[i00]) * fc;
-  const bot = grid[i01] + (grid[i11] - grid[i01]) * fc;
+  const v00 = grid[i00] ?? 0;
+  const v10 = grid[i00 + 1] ?? 0;
+  const v01 = grid[i00 + N] ?? 0;
+  const v11 = grid[i00 + N + 1] ?? 0;
+  const top = v00 + (v10 - v00) * fc;
+  const bot = v01 + (v11 - v01) * fc;
   return top + (bot - top) * fr;
 }
 
@@ -70,8 +71,12 @@ export function slopeAt(t: TerrainData, col: number, row: number): number {
   const e = t.elevation;
   const c = Math.min(Math.max(Math.round(col), 1), N - 2);
   const r = Math.min(Math.max(Math.round(row), 1), N - 2);
-  const dzdx = (e[r * N + c + 1] - e[r * N + c - 1]) / (2 * METRES_PER_SAMPLE);
-  const dzdy = (e[(r + 1) * N + c] - e[(r - 1) * N + c]) / (2 * METRES_PER_SAMPLE);
+  const eE = e[r * N + c + 1] ?? 0;
+  const eW = e[r * N + c - 1] ?? 0;
+  const eS = e[(r + 1) * N + c] ?? 0;
+  const eN = e[(r - 1) * N + c] ?? 0;
+  const dzdx = (eE - eW) / (2 * METRES_PER_SAMPLE);
+  const dzdy = (eS - eN) / (2 * METRES_PER_SAMPLE);
   return Math.atan(Math.hypot(dzdx, dzdy)) * (180 / Math.PI);
 }
 
