@@ -34,6 +34,18 @@ export function gridToWorld(col: number, row: number): { x: number; z: number } 
   return { x: col * METRES_PER_SAMPLE, z: row * METRES_PER_SAMPLE };
 }
 
+/** Grid -> local scene metres around a grid-space origin. */
+export function gridToLocalWorld(
+  col: number,
+  row: number,
+  originCol: number,
+  originRow: number,
+): { x: number; z: number } {
+  const point = gridToWorld(col, row);
+  const origin = gridToWorld(originCol, originRow);
+  return { x: point.x - origin.x, z: point.z - origin.z };
+}
+
 /** World metres -> grid. */
 export function worldToGrid(x: number, z: number): { col: number; row: number } {
   return { col: x / METRES_PER_SAMPLE, row: z / METRES_PER_SAMPLE };
