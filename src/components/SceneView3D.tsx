@@ -16,18 +16,18 @@ import { heightAt, type TerrainData } from "../sim/terrain";
 import { gridToScene, sceneToGrid, SPAN_METRES, gridDistanceM } from "../utils/coords";
 import { MapView2D } from "./MapView2D";
 
-/** Height of the same 512-segment triangles used by the visible terrain. */
+/** Height of the same 1024-segment triangles used by the visible terrain. */
 export function surfaceHeight(t: TerrainData, col: number, row: number) {
   const c = Math.max(0, Math.min(1024, col)),
     r = Math.max(0, Math.min(1024, row));
-  const c0 = Math.min(1022, Math.floor(c / 2) * 2),
-    r0 = Math.min(1022, Math.floor(r / 2) * 2);
-  const u = (c - c0) / 2,
-    v = (r - r0) / 2;
+  const c0 = Math.min(1023, Math.floor(c)),
+    r0 = Math.min(1023, Math.floor(r));
+  const u = c - c0,
+    v = r - r0;
   const a = heightAt(t, c0, r0),
-    b = heightAt(t, c0, r0 + 2);
-  const d = heightAt(t, c0 + 2, r0),
-    e = heightAt(t, c0 + 2, r0 + 2);
+    b = heightAt(t, c0, r0 + 1);
+  const d = heightAt(t, c0 + 1, r0),
+    e = heightAt(t, c0 + 1, r0 + 1);
   return u + v <= 1 ? a + (d - a) * u + (b - a) * v : e + (b - e) * (1 - u) + (d - e) * (1 - v);
 }
 
@@ -40,8 +40,28 @@ function Terrain({ data }: { data: TerrainData }) {
     map.needsUpdate = true;
     return map;
   }, [source]);
+  // Cosmetic centimetre-scale regolith. Does not displace geometry or feed sensors.
+  const regolith = useMemo(() => {
+    const size = 256,
+      pixels = new Uint8Array(size * size * 4);
+    let seed = 731;
+    for (let i = 0; i < size * size; i++) {
+      seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+      const v = 70 + Math.floor((seed / 4294967296) * 170);
+      pixels.set([v, v, v, 255], i * 4);
+    }
+    const map = new THREE.DataTexture(pixels, size, size);
+    map.wrapS = map.wrapT = THREE.RepeatWrapping;
+    map.repeat.set(SPAN_METRES / 16, SPAN_METRES / 16);
+    map.magFilter = THREE.LinearFilter;
+    map.minFilter = THREE.LinearMipmapLinearFilter;
+    map.generateMipmaps = true;
+    map.anisotropy = 8;
+    map.needsUpdate = true;
+    return map;
+  }, []);
   const geometry = useMemo(() => {
-    const g = new THREE.PlaneGeometry(SPAN_METRES, SPAN_METRES, 512, 512);
+    const g = new THREE.PlaneGeometry(SPAN_METRES, SPAN_METRES, 1024, 1024);
     g.rotateX(-Math.PI / 2);
     const p = g.attributes["position"]!;
     for (let i = 0; i < p.count; i++) {
@@ -57,12 +77,28 @@ function Terrain({ data }: { data: TerrainData }) {
     () => () => {
       geometry.dispose();
       texture.dispose();
+      regolith.dispose();
     },
-    [geometry, texture],
+    [geometry, texture, regolith],
   );
   return (
     <mesh geometry={geometry} receiveShadow>
-      <meshStandardMaterial map={texture} roughness={0.95} />
+      <meshStandardMaterial
+        map={texture}
+        roughness={0.98}
+        bumpMap={regolith}
+        bumpScale={0.12}
+        onBeforeCompile={(shader) => {
+          shader.fragmentShader = shader.fragmentShader.replace(
+            "#include <map_fragment>",
+            `#include <map_fragment>
+             #ifdef USE_BUMPMAP
+               float grain = texture2D(bumpMap, vBumpMapUv).r;
+               diffuseColor.rgb *= mix(0.62, 1.02, grain);
+             #endif`,
+          );
+        }}
+      />
     </mesh>
   );
 }
@@ -348,7 +384,7 @@ function Sun({ data }: { data: TerrainData }) {
       <directionalLight
         ref={light}
         target={target}
-        intensity={3}
+        intensity={2.6}
         castShadow
         shadow-bias={-0.0005}
         shadow-normalBias={0.05}
@@ -416,15 +452,15 @@ export function SceneView3D() {
               camera={{ fov: 45, near: 0.1, far: 40000 }}
               onCreated={({ gl }) => {
                 gl.setClearColor("#08090c");
-                gl.toneMappingExposure = 1.25;
+                gl.toneMappingExposure = 1.05;
                 gl.domElement.addEventListener("webglcontextlost", () => setMapOnly(true), {
                   once: true,
                 });
               }}
             >
               {/* Presentation fill reveals the supplied lunar texture; sensor illumination remains unchanged. */}
-              <ambientLight intensity={1.1} />
-              <hemisphereLight args={["#e8edf4", "#5b5960", 1.4]} />
+              <ambientLight intensity={0.7} />
+              <hemisphereLight args={["#e8edf4", "#5b5960", 0.8]} />
               <Sun data={data} />
               <Terrain data={data} />
               <Rover data={data} />
@@ -439,7 +475,7 @@ export function SceneView3D() {
         ROVER 1 ·{" "}
         {mapOnly
           ? "SURFACE SURVEY"
-          : `${cameraMode === "SURVEY" ? "TERRAIN OVERVIEW" : cameraMode === "ORBIT" ? "ORBIT CAMERA" : "CHASE 35 M"} · DEM 20 M`}
+          : `${cameraMode === "SURVEY" ? "TERRAIN OVERVIEW" : cameraMode === "ORBIT" ? "ORBIT CAMERA" : "CHASE 35 M"} · DEM 20 M · VISUAL REGOLITH`}
       </div>
       {!mapOnly && (
         <div className="absolute bottom-3 right-28 flex gap-2">
