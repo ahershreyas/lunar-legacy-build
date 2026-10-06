@@ -36,6 +36,39 @@ export function CommsLog() {
           Comm Downlink
         </h2>
       </header>
+      <div className="mb-2 grid grid-cols-2 gap-2">
+        {(["MISSION CONTROL", "ROVER 1"] as const).map((role) => {
+          const active = radio.startsWith(`${role} SPEAKING`);
+          return (
+            <div
+              key={role}
+              className={`rounded border p-2 ${role === "MISSION CONTROL" ? "border-sky-400/25 text-sky-400" : "border-emerald-400/25 text-emerald-400"}`}
+            >
+              <span className="block text-[9px] tracking-widest">
+                {role} · {active ? "TRANSMITTING" : "STANDBY"}
+              </span>
+              <div
+                aria-label={`${role} voice activity`}
+                className="flex h-7 items-center gap-[3px]"
+              >
+                {Array.from({ length: 24 }, (_, i) => (
+                  <span
+                    key={i}
+                    style={{
+                      height: active ? `${20 + ((i * 37) % 80)}%` : "8%",
+                      animation: active
+                        ? `radio-wave ${0.35 + (i % 5) * 0.09}s ease-in-out ${i * 0.03}s infinite alternate`
+                        : "none",
+                    }}
+                    className="w-[3px] rounded bg-current opacity-80"
+                  />
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <style>{`@keyframes radio-wave {from {transform:scaleY(0.2);opacity:0.4} to {transform:scaleY(1);opacity:1}}`}</style>
       <p role="status" className="mb-2 text-[10px] text-telemetry">
         {radio}
       </p>
