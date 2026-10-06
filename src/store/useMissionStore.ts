@@ -23,7 +23,7 @@ export interface LogEntry {
   who: "ROVER 1" | "CONTROL" | "COMMANDER" | "SYSTEM";
   text: string;
   tone?: "nominal" | "hazard" | "abort" | undefined;
-  voice?: boolean; // a spoken radio transmission
+  voice?: boolean | undefined; // a spoken radio transmission
 }
 
 export interface MissionQuote extends Quote {
