@@ -207,7 +207,7 @@ function updateProgress(t: TerrainData) {
   const s = S();
   while (
     route.length &&
-    gridDistanceM(s.col, s.row, route[0]!.col, route[0]!.row) < 10 &&
+    gridDistanceM(s.col, s.row, route[0]!.col, route[0]!.row) < 1 &&
     !/drill|core|sample/i.test(route[0]!.purpose ?? "")
   )
     route.shift();
@@ -293,7 +293,26 @@ async function drive(
 }
 
 async function driveLeg(t: TerrainData, signal: AbortSignal, bearing: number, metres: number) {
-  set({ status: returning ? "RETURNING" : "DRIVING" });
+  // Execute the model's heading as a finite stationary turn, then drive.
+  const turnTarget = ((bearing % 360) + 360) % 360;
+  let previousTurn = performance.now();
+  for (;;) {
+    if (signal.aborted) throw new Aborted();
+    const current = S();
+    const difference = ((turnTarget - current.heading + 540) % 360) - 180;
+    if (Math.abs(difference) < 0.1) break;
+    set({ status: "TURNING" });
+    const now = performance.now();
+    const step = ((now - previousTurn) / 1000) * 10 * Math.min(current.timeCompression, 4);
+    previousTurn = now;
+    set({
+      heading:
+        (current.heading + Math.sign(difference) * Math.min(Math.abs(difference), step) + 360) %
+        360,
+    });
+    await sleep(100, signal);
+  }
+  set({ heading: turnTarget, status: returning ? "RETURNING" : "DRIVING" });
   const s = S();
   const mv = applyMove(t, s.col, s.row, bearing, metres);
   await drive(t, signal, mv.path, mv.travelled, mv.batteryCost, mv.durationS);
@@ -337,14 +356,14 @@ function completeSortie() {
   fin.appendLog("SYSTEM", "Rover 1 at landing site. Mission sequence complete.", "nominal");
 }
 
-function logRover(d: RoverDecision, prefix?: string) {
+function logRover(d: RoverDecision, prefix?: string, audible = false) {
   const tone = d.risk === "HIGH" ? "abort" : d.risk === "MEDIUM" ? "hazard" : "nominal";
   S().appendLog(
     "ROVER 1",
     prefix ? `${prefix} — ${d.reason}` : `[${d.action} · ${d.risk}] ${d.reason}`,
     tone,
   );
-  S().appendLog("ROVER 1", d.transmission, tone, true);
+  S().appendLog("ROVER 1", d.transmission, tone, audible);
 }
 
 /** Mission Control (second Astra) — only at hazard/detour and sample moments, plus IDLE. */
@@ -367,7 +386,12 @@ async function groundCall(
     "CONTROL",
   );
   if (g)
-    S().appendLog("CONTROL", g.transmission, g.verdict === "QUESTION" ? "hazard" : "nominal", true);
+    S().appendLog(
+      "CONTROL",
+      g.transmission,
+      g.verdict === "QUESTION" ? "hazard" : "nominal",
+      moment === "dispatch",
+    );
 }
 
 export async function controlIdleProposal() {
@@ -401,7 +425,7 @@ export async function controlIdleProposal() {
       "CONTROL",
     );
     if (g && !signal.aborted) {
-      S().appendLog("CONTROL", g.transmission, "nominal", true);
+      S().appendLog("CONTROL", g.transmission, "nominal", false);
       set({
         proposal: {
           target: g.target,
@@ -537,7 +561,7 @@ async function sortie(t: TerrainData, signal: AbortSignal, goal: string) {
     "PLAN",
   );
   if (!plan) return set({ status: "IDLE", running: false });
-  logRover(plan);
+  logRover(plan, undefined, true);
 
   let legs: Leg[] = plan.waypoints;
   let verdict: RoverDecision = plan;

@@ -7,7 +7,7 @@ import type { TerrainData } from "../sim/terrain";
 
 const DEFAULT_ZOOM = 4;
 const MIN_ZOOM = 1;
-const MAX_ZOOM = 16;
+const MAX_ZOOM = 128;
 
 /**
  * Shaded-relief map of the full 20.48 km grid, rendered from terrain.bin.
@@ -26,6 +26,22 @@ export function MapView2D({ overview = false }: { overview?: boolean }) {
     zoomRef.current = clamped;
     setZoom(clamped);
   };
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || overview) return;
+    const wheel = (event: WheelEvent) => {
+      event.preventDefault();
+      const next = Math.max(
+        MIN_ZOOM,
+        Math.min(MAX_ZOOM, zoomRef.current * Math.exp(-event.deltaY * 0.002)),
+      );
+      zoomRef.current = next;
+      setZoom(next);
+    };
+    canvas.addEventListener("wheel", wheel, { passive: false });
+    return () => canvas.removeEventListener("wheel", wheel);
+  }, [overview]);
 
   // Build the shaded relief once per terrain load (offscreen, 1024^2).
   useEffect(() => {
@@ -141,6 +157,34 @@ export function MapView2D({ overview = false }: { overview?: boolean }) {
       ctx.arc(p.x, p.y, 3 * dpr, 0, Math.PI * 2);
       ctx.fillStyle = "#06B6D4";
       ctx.fill();
+      // A constant screen-size rover silhouette remains readable at every map scale.
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate((st.heading * Math.PI) / 180);
+      ctx.fillStyle = "#06B6D4";
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = dpr;
+      ctx.fillRect(-5 * dpr, -7 * dpr, 10 * dpr, 14 * dpr);
+      ctx.strokeRect(-5 * dpr, -7 * dpr, 10 * dpr, 14 * dpr);
+      for (const y of [-5, 0, 5]) {
+        ctx.fillRect(-9 * dpr, y * dpr, 3 * dpr, 3 * dpr);
+        ctx.fillRect(6 * dpr, y * dpr, 3 * dpr, 3 * dpr);
+      }
+      ctx.beginPath();
+      ctx.moveTo(0, -16 * dpr);
+      ctx.lineTo(-4 * dpr, -10 * dpr);
+      ctx.lineTo(4 * dpr, -10 * dpr);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+      const label = overview ? "ROVER 1" : `ROVER 1 · ${st.status} · BAT ${st.battery.toFixed(1)}%`;
+      ctx.font = `${overview ? 9 * dpr : 11 * dpr}px monospace`;
+      const labelWidth = ctx.measureText(label).width + 12 * dpr;
+      ctx.fillStyle = "rgba(0,0,0,0.85)";
+      ctx.fillRect(p.x - labelWidth / 2, p.y - 43 * dpr, labelWidth, 19 * dpr);
+      ctx.fillStyle = "#a5f3fc";
+      ctx.textAlign = "center";
+      ctx.fillText(label, p.x, p.y - 30 * dpr);
       ctx.restore();
     };
     raf = requestAnimationFrame(frame);
@@ -152,10 +196,11 @@ export function MapView2D({ overview = false }: { overview?: boolean }) {
       <canvas ref={canvasRef} className="h-full w-full" />
       <div className="pointer-events-none absolute left-3 top-3 font-mono text-[10px] uppercase tracking-[0.2em] text-label">
         {overview ? "Surface Overview" : "Rover Survey"} —{" "}
-        {Math.round((GRID_SIZE * METRES_PER_SAMPLE) / zoom).toLocaleString()} m across · {zoom}×
+        {Math.round((GRID_SIZE * METRES_PER_SAMPLE) / zoom).toLocaleString()} m across ·{" "}
+        {Number(zoom.toFixed(1))}×
       </div>
       {!overview && (
-        <div className="absolute bottom-3 right-3 flex flex-col gap-1 rounded-md border border-border bg-card/90 p-1 shadow-lg backdrop-blur-sm">
+        <div className="absolute top-12 right-3 z-20 flex flex-col gap-1 rounded-md border border-border bg-card/90 p-1 shadow-lg backdrop-blur-sm">
           <Button
             aria-label="Zoom in on rover"
             title="Zoom in on rover"

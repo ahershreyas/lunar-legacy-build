@@ -11,6 +11,7 @@ export type MissionStatus =
   | "IDLE"
   | "PLANNING"
   | "AWAITING_APPROVAL"
+  | "TURNING"
   | "DRIVING"
   | "THINKING"
   | "DRILLING"

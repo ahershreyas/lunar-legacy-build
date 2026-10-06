@@ -137,9 +137,26 @@ describe("Mission lifecycle", () => {
     choose("abort");
     await task;
   });
+  it("turns gradually without translating and aborts immediately during a turn", async () => {
+    setup([decision("MOVE")]);
+    useMissionStore.setState({ heading: 0, timeCompression: 1 });
+    const task = runMission("turn check");
+    await flush();
+    choose("approve");
+    await flush();
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(useMissionStore.getState().status).toBe("TURNING");
+    expect(useMissionStore.getState().heading).toBeCloseTo(30, 0);
+    expect(useMissionStore.getState().col).toBe(320);
+    emergencyHold();
+    await task;
+    const stopped = useMissionStore.getState().heading;
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(useMissionStore.getState().heading).toBe(stopped);
+  });
   it("drives at lunar pace and applies speed changes during a leg", async () => {
     setup([decision("MOVE"), decision("HOLD")]);
-    useMissionStore.setState({ timeCompression: 1 });
+    useMissionStore.setState({ timeCompression: 1, heading: 90 });
     const task = runMission("speed check");
     await flush();
     choose("approve");
@@ -163,7 +180,7 @@ describe("Mission lifecycle", () => {
     await flush();
     choose("approve");
     await flush();
-    await vi.advanceTimersByTimeAsync(8000);
+    await vi.advanceTimersByTimeAsync(20000);
     await task;
     const s = useMissionStore.getState();
     expect(s.status).toBe("COMPLETE");
@@ -212,7 +229,7 @@ describe("Mission lifecycle", () => {
     await flush();
     choose("approve");
     await flush();
-    await vi.advanceTimersByTimeAsync(1500);
+    await vi.advanceTimersByTimeAsync(6000);
     expect(useMissionStore.getState().pending?.kind).toBe("pause");
     expect(useMissionStore.getState().col).toBeCloseTo(321);
     expect(useMissionStore.getState().summary).toBeNull();

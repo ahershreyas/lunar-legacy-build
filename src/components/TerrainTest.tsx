@@ -24,25 +24,25 @@ export function TerrainTest() {
   const terrain = useMissionStore((s) => s.terrain);
   return (
     <section className="rounded border border-white/15 bg-card p-3 text-xs text-label">
-      <strong className="block mb-2 text-telemetry">FIELD TEST · BRIGHT HIGHLANDS</strong>
+      <strong className="block mb-2 text-telemetry">FIELD TEST · MEASURED CRATER</strong>
       <p className="mb-2">
-        The bright highland patch marked on the overview. Real 20 m DEM relief; rendering fill light
-        improves visibility without changing the sensor readings.
+        Real DEM depression: floor about 35 m below its surrounding 200 m ring. Staging is on the
+        north approach; use CRATER RELIEF to see the bowl.
       </p>
       <button
         disabled={running || !terrain}
         className="text-telemetry disabled:opacity-40"
         onClick={() => {
           emergencyHold();
-          Object.assign(LANDING_SITE, { col: 352, row: 318 });
+          Object.assign(LANDING_SITE, { col: 486, row: 226 });
           useMissionStore.setState({
-            col: 352,
-            row: 318,
+            col: 486,
+            row: 226,
             heading: 0,
             battery: 100,
             status: "IDLE",
             samples: [],
-            trail: [{ col: 352, row: 318 }],
+            trail: [{ col: 486, row: 226 }],
             plannedPath: [],
             detour: null,
             summary: null,
@@ -55,12 +55,12 @@ export function TerrainTest() {
             .getState()
             .appendLog(
               "SYSTEM",
-              "FIELD TEST STAGING — bright highlands, grid 352 / 318. New home reference; real elevated terrain.",
+              "FIELD TEST STAGING — measured crater north approach, grid 486 / 226. New home reference; real elevated terrain.",
             );
           void controlIdleProposal();
         }}
       >
-        STAGE AT BRIGHT HIGHLANDS
+        STAGE AT MEASURED CRATER
       </button>
       <div className="mt-2 grid grid-cols-2 gap-2">
         {(["CONTROL", "ROVER 1"] as const).map((role) => (

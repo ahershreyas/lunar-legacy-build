@@ -12,7 +12,7 @@ import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { OrbitControls, Line, Html, useGLTF, useTexture } from "@react-three/drei";
 import * as THREE from "three";
 import { useMissionStore } from "../store/useMissionStore";
-import { heightAt, type TerrainData } from "../sim/terrain";
+import { heightAt, slopeAt, illuminationAt, type TerrainData } from "../sim/terrain";
 import { gridToScene, sceneToGrid, SPAN_METRES, gridDistanceM } from "../utils/coords";
 import { MapView2D } from "./MapView2D";
 
@@ -107,6 +107,7 @@ function Rover({ data }: { data: TerrainData }) {
   const loaded = useGLTF("/models/rover.glb");
   const root = useRef<THREE.Group>(null);
   const prev = useRef<{ col: number; row: number } | null>(null);
+  const previousHeading = useRef<number | null>(null);
   const pose = useRef<{ col: number; row: number } | null>(null);
   const model = useMemo(() => {
     const m = loaded.scene.clone(true);
@@ -210,14 +211,65 @@ function Rover({ data }: { data: TerrainData }) {
       prev.current && delta > 0 && moving
         ? gridDistanceM(prev.current.col, prev.current.row, p.col, p.row) / delta
         : 0;
-    for (const wheel of wheels) if (wheel) wheel.rotation.x -= (speed * delta) / 0.53;
+    const turnDelta =
+      previousHeading.current === null
+        ? 0
+        : ((s.heading - previousHeading.current + 540) % 360) - 180;
+    for (const wheel of wheels)
+      if (wheel) {
+        const side = wheel.name.endsWith("L") ? -1 : 1;
+        wheel.rotation.x -=
+          (speed * delta +
+            (s.status === "TURNING" ? ((side * turnDelta * Math.PI) / 180) * 1.98 : 0)) /
+          0.53;
+      }
+    previousHeading.current = s.heading;
     if (drill) drill.rotation.x += ((s.status === "DRILLING" ? 0.65 : 0) - drill.rotation.x) * k;
     prev.current = { ...p };
   });
   return (
     <group ref={root}>
       <primitive object={model} dispose={null} />
+      <RoverTelemetry data={data} />
     </group>
+  );
+}
+
+function RoverTelemetry({ data }: { data: TerrainData }) {
+  const s = useMissionStore();
+  const slope = slopeAt(data, s.col, s.row);
+  const moving = s.status === "DRIVING" || s.status === "RETURNING";
+  return (
+    <Html position={[0, 9, 0]} center style={{ pointerEvents: "none" }}>
+      <div className="w-56 rounded border border-sky-400/40 bg-black/85 px-3 py-2 font-mono text-[10px] text-sky-200 shadow-lg">
+        <div className="flex justify-between">
+          <strong>ROVER 1</strong>
+          <span>{s.status}</span>
+        </div>
+        <div className={s.battery < 20 ? "text-red-300" : "text-emerald-300"}>
+          BATTERY {s.battery.toFixed(1)}% · HEADING {s.heading.toFixed(0)}°
+        </div>
+        <div>
+          SLOPE {slope.toFixed(1)}° · LIGHT {(illuminationAt(data, s.col, s.row) * 100).toFixed(0)}%
+        </div>
+        <div>
+          {s.status === "TURNING"
+            ? "TURNING · WHEELS PIVOTING"
+            : moving
+              ? `TRAVERSING · TIME ×${s.timeCompression}`
+              : "STATIONARY"}{" "}
+          · CORES {s.samples.length}
+        </div>
+      </div>
+      <div
+        className="mx-auto mt-1 flex h-6 w-6 items-center justify-center rounded-full border-2 border-white bg-cyan-500/80 shadow-lg"
+        aria-label="Rover position locator"
+      >
+        <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="black" strokeWidth="2">
+          <path d="M8 4h8v16H8zM4 5v3m0 3v3m0 3v3m16-15v3m0 3v3m0 3v3M12 1v3" />
+        </svg>
+      </div>
+    </Html>
   );
 }
 
@@ -297,7 +349,7 @@ function DrillEffects({ data }: { data: TerrainData }) {
   );
 }
 
-type CameraMode = "CHASE" | "ORBIT" | "SURVEY";
+type CameraMode = "CHASE" | "ORBIT" | "SURVEY" | "RELIEF";
 function CameraRig({
   data,
   mode,
@@ -316,7 +368,14 @@ function CameraRig({
     const s = useMissionStore.getState(),
       p = gridToScene(s.col, s.row),
       y = surfaceHeight(data, s.col, s.row);
-    if (mode === "SURVEY") {
+    if (mode === "RELIEF") {
+      const centre = gridToScene(s.col, s.row + 10);
+      const floor = surfaceHeight(data, s.col, s.row + 10);
+      vectors.target.set(centre.x, floor, centre.z);
+      camera.position.set(centre.x + 180, floor + 260, centre.z + 440);
+      controls.current?.target.copy(vectors.target);
+      controls.current?.update();
+    } else if (mode === "SURVEY") {
       vectors.target.set(0, (data.minElev + data.maxElev) / 2, 0);
       vectors.eye.set(11000, data.maxElev + 16000, 12000);
       camera.position.copy(vectors.eye);
@@ -336,7 +395,7 @@ function CameraRig({
     const current = useMissionStore.getState();
     const roverPosition = gridToScene(current.col, current.row);
     const roverHeight = surfaceHeight(data, current.col, current.row);
-    if (mode === "ORBIT" && previousRover.current) {
+    if ((mode === "ORBIT" || mode === "RELIEF") && previousRover.current) {
       // Follow translation while retaining the viewing angle selected by dragging.
       const previous = previousRover.current;
       const dx = roverPosition.x - previous.x,
@@ -436,9 +495,9 @@ export function SceneView3D() {
   const running = useMissionStore((s) => s.running);
   const [ready, setReady] = useState(false);
   const [mapOnly, setMapOnly] = useState(false);
-  const [cameraMode, setCameraMode] = useState<CameraMode>("CHASE");
+  const [cameraMode, setCameraMode] = useState<CameraMode>("RELIEF");
   useEffect(() => {
-    if (running) setCameraMode("CHASE");
+    if (running) setCameraMode((mode) => (mode === "SURVEY" ? "RELIEF" : mode));
   }, [running]);
   useEffect(() => {
     const c = document.createElement("canvas");
@@ -498,10 +557,16 @@ export function SceneView3D() {
         ROVER 1 ·{" "}
         {mapOnly
           ? "SURFACE SURVEY"
-          : `${cameraMode === "SURVEY" ? "TERRAIN OVERVIEW" : cameraMode === "ORBIT" ? "ORBIT FOLLOW" : "CHASE 35 M"} · DEM 20 M · VISUAL REGOLITH`}
+          : `${cameraMode === "RELIEF" ? "CRATER RELIEF" : cameraMode === "SURVEY" ? "TERRAIN OVERVIEW" : cameraMode === "ORBIT" ? "ORBIT FOLLOW" : "CHASE 35 M"} · DEM 20 M · VISUAL REGOLITH`}
       </div>
       {!mapOnly && (
         <div className="absolute bottom-3 right-28 flex gap-2">
+          <button
+            onClick={() => setCameraMode("RELIEF")}
+            className="rounded border border-white/20 bg-card/95 px-3 py-2 font-mono text-[10px] text-telemetry"
+          >
+            CRATER RELIEF
+          </button>
           <button
             onClick={() => setCameraMode("SURVEY")}
             className="rounded border border-white/20 bg-card/95 px-3 py-2 font-mono text-[10px] text-telemetry"

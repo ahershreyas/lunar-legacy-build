@@ -2,7 +2,6 @@ import { useState } from "react";
 import { useMissionStore } from "../store/useMissionStore";
 import { choose, runMission, type Choice } from "../sim/loop";
 import { formatDuration, formatEta, NATO } from "../sim/estimate";
-import { SortieCompleteCard } from "./OpsPanels";
 import { RiskGauge } from "./RiskGauge";
 
 const pad3 = (n: number) => String(((Math.round(n) % 360) + 360) % 360).padStart(3, "0");
@@ -222,7 +221,7 @@ export function MissionCards() {
       </Shell>
     );
   }
-  return <SortieCompleteCard />;
+  return null;
 }
 
 export function TransmissionBar() {

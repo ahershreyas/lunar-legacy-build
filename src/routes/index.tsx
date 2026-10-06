@@ -13,7 +13,7 @@ import { MissionLink } from "../components/MissionLink";
 import { GoalInput } from "../components/GoalInput";
 import { LoadingScreen } from "../components/LoadingScreen";
 import { MissionCards, TransmissionBar, LiveProgress } from "../components/MissionCards";
-import { RiskPanel, Attribution } from "../components/OpsPanels";
+import { SortieCompleteCard, RiskPanel, Attribution } from "../components/OpsPanels";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -82,6 +82,7 @@ function Index() {
         </div>
         <div className="flex min-h-0 min-w-0 flex-col gap-3" style={{ flex: "35 1 0%" }}>
           <div className="min-h-0 flex-[2.4] space-y-3 overflow-y-auto">
+            <SortieCompleteCard />
             <MissionLink />
             <TerrainTest />
             <SubsystemCard />
