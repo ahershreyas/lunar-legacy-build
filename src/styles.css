@@ -73,12 +73,12 @@
 
 :root {
   --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.129 0.042 264.695);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.129 0.042 264.695);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.129 0.042 264.695);
+  --background: oklch(0.145 0.008 264); /* #08090C */
+  --foreground: oklch(0.984 0.003 247.858);
+  --card: oklch(0.172 0.01 260); /* #0E1116 */
+  --card-foreground: oklch(0.984 0.003 247.858);
+  --popover: oklch(0.172 0.01 260);
+  --popover-foreground: oklch(0.984 0.003 247.858);
   --primary: oklch(0.208 0.042 265.755);
   --primary-foreground: oklch(0.984 0.003 247.858);
   --secondary: oklch(0.968 0.007 247.896);
