@@ -1,7 +1,25 @@
+import { useState, useEffect } from "react";
 import { useMissionStore, LANDING_SITE } from "../store/useMissionStore";
 import { emergencyHold, controlIdleProposal } from "../sim/loop";
-import { unlockAudio, speak } from "../utils/radioVoice";
+import { unlockAudio, speak, setRadioVoice } from "../utils/radioVoice";
 export function TerrainTest() {
+  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
+  useEffect(() => {
+    if (!("speechSynthesis" in window)) return;
+    const update = () =>
+      setVoices(
+        speechSynthesis
+          .getVoices()
+          .filter(
+            (v) =>
+              v.lang.startsWith("en") &&
+              !/Albert|Bells|Boing|Zarvox|Whisper|Trinoids/i.test(v.name),
+          ),
+      );
+    update();
+    speechSynthesis.addEventListener("voiceschanged", update);
+    return () => speechSynthesis.removeEventListener("voiceschanged", update);
+  }, []);
   const running = useMissionStore((s) => s.running);
   const terrain = useMissionStore((s) => s.terrain);
   return (
@@ -44,6 +62,25 @@ export function TerrainTest() {
       >
         STAGE AT CRATER RIM
       </button>
+      <div className="mt-2 grid grid-cols-2 gap-2">
+        {(["CONTROL", "ROVER 1"] as const).map((role) => (
+          <label key={role}>
+            {role === "CONTROL" ? "Ground voice" : "Rover voice"}
+            <select
+              aria-label={`${role === "CONTROL" ? "Ground" : "Rover"} radio voice`}
+              className="mt-1 w-full bg-well p-1"
+              onChange={(e) => setRadioVoice(role, e.target.value)}
+            >
+              <option value="">Natural default</option>
+              {voices.map((v) => (
+                <option key={v.voiceURI} value={v.voiceURI}>
+                  {v.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        ))}
+      </div>
       <button
         className="block mt-2 text-telemetry"
         onClick={() => {

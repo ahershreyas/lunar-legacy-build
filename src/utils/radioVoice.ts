@@ -1,3 +1,7 @@
+const voiceChoice: Record<string, string> = {};
+export function setRadioVoice(role: "CONTROL" | "ROVER 1", voiceURI: string) {
+  voiceChoice[role] = voiceURI;
+}
 export let radioStatus = "RADIO STANDBY";
 const listeners = new Set<() => void>();
 export const subscribeRadio = (fn: () => void) => {
@@ -97,6 +101,7 @@ async function utter(who: string, text: string) {
     );
     const first = natural[0] ?? voices[0];
     const voice =
+      voices.find((v) => v.voiceURI === voiceChoice[who]) ??
       preferred ??
       (who === "CONTROL"
         ? first
