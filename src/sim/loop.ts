@@ -352,7 +352,7 @@ function logRover(d: RoverDecision, prefix?: string) {
 /** Mission Control (second Astra) — only at hazard/detour and sample moments, plus IDLE. */
 async function groundCall(
   signal: AbortSignal,
-  moment: "hazard" | "sample",
+  moment: "hazard" | "sample" | "dispatch",
   goal: string,
   event: unknown,
 ) {
@@ -675,6 +675,11 @@ async function stepLoop(t: TerrainData, signal: AbortSignal, goal: string) {
     hazard = null;
 
     if (d.waypoints.length) {
+      await groundCall(signal, "hazard", goal, {
+        reason: d.reason,
+        proposed_route: d.waypoints,
+        deviation: "Rover requests changed traverse stations before moving",
+      });
       setRoute(d.waypoints);
       set({ detour: routePoints(S().col, S().row, d.waypoints) });
     }
@@ -709,7 +714,8 @@ async function stepLoop(t: TerrainData, signal: AbortSignal, goal: string) {
       }
       case "DRILL": {
         set({ status: "DRILLING" });
-        await sleep((45 * 1000) / TIME_COMPRESSION, signal);
+        // Keep the accelerated drill leg visible while retaining 45 simulated seconds.
+        await sleep(4000, signal);
         const r = applyDrill(t, now.col, now.row);
         set((st) => ({
           battery: Math.max(0, st.battery - r.batteryCost),
@@ -788,6 +794,9 @@ export async function runMission(goal: string) {
     progress: null,
   });
   try {
+    set({ status: "PLANNING" });
+    await groundCall(signal, "dispatch", goal, { objective: goal });
+    if (S().link !== "READY") return;
     await sortie(t, signal, goal);
   } catch (e) {
     if (!(e instanceof Aborted)) {

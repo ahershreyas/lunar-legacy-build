@@ -8,6 +8,7 @@ import { MapView2D } from "../components/MapView2D";
 import { SubsystemCard } from "../components/SubsystemCard";
 import { SpectrometryCard } from "../components/SpectrometryCard";
 import { CommsLog } from "../components/CommsLog";
+import { TerrainTest } from "../components/TerrainTest";
 import { MissionLink } from "../components/MissionLink";
 import { GoalInput } from "../components/GoalInput";
 import { LoadingScreen } from "../components/LoadingScreen";
@@ -82,6 +83,7 @@ function Index() {
         <div className="flex min-h-0 min-w-0 flex-col gap-3" style={{ flex: "35 1 0%" }}>
           <div className="min-h-0 flex-[2.4] space-y-3 overflow-y-auto">
             <MissionLink />
+            <TerrainTest />
             <SubsystemCard />
             <SpectrometryCard />
             <RiskPanel />

@@ -76,7 +76,7 @@ export interface MissionPlan {
   riskPct: number;
 }
 
-export const LANDING_SITE = { col: 320, row: 687 } as const;
+export const LANDING_SITE = { col: 320, row: 687 };
 export const TIME_COMPRESSION = 120;
 
 interface MissionState {

@@ -39,7 +39,7 @@ const decision = (action: string, extra = {}) => ({
 });
 const initial = useMissionStore.getState();
 const flush = async () => {
-  for (let i = 0; i < 10; i++) await Promise.resolve();
+  for (let i = 0; i < 40; i++) await Promise.resolve();
 };
 
 beforeEach(() => {
@@ -126,6 +126,7 @@ describe("Mission lifecycle", () => {
     await flush();
     expect(useMissionStore.getState().pending?.kind).toBe("approve");
     expect(useMissionStore.getState().col).toBe(320);
+    expect(think.mock.calls[0]![0].data.moment).toBe("dispatch");
     choose("approve");
     await flush();
     expect(useMissionStore.getState().pending?.kind).toBe("pause");

@@ -1,3 +1,16 @@
+export let radioStatus = "RADIO STANDBY";
+const listeners = new Set<() => void>();
+export const subscribeRadio = (fn: () => void) => {
+  listeners.add(fn);
+  return () => {
+    listeners.delete(fn);
+  };
+};
+export const getRadioStatus = () => radioStatus;
+function status(message: string) {
+  radioStatus = message;
+  listeners.forEach((fn) => fn());
+}
 /** Browser radio: serial speech with Quindar tones, never replacing the transcript. */
 let ctx: AudioContext | null = null;
 let queue: Promise<void> = Promise.resolve();
@@ -58,6 +71,15 @@ function noiseBed() {
   };
 }
 async function utter(who: string, text: string) {
+  if (!speechSynthesis.getVoices().length)
+    await new Promise<void>((resolve) => {
+      const ready = () => {
+        speechSynthesis.removeEventListener("voiceschanged", ready);
+        resolve();
+      };
+      speechSynthesis.addEventListener("voiceschanged", ready);
+      setTimeout(ready, 1200);
+    });
   await new Promise<void>((resolve) => {
     const u = new SpeechSynthesisUtterance(text);
     const voices = speechSynthesis.getVoices().filter((v) => v.lang.startsWith("en"));
@@ -67,14 +89,22 @@ async function utter(who: string, text: string) {
         : (voices.find((v) => v.voiceURI !== voices[0]?.voiceURI) ?? voices[0]);
     if (voice) u.voice = voice;
     u.rate = 0.9;
-    u.pitch = 0.94;
+    u.pitch = who === "CONTROL" ? 0.94 : 0.82;
+    u.volume = 1;
+    const role = who === "CONTROL" ? "MISSION CONTROL" : "ROVER 1";
+    u.onstart = () =>
+      status(`${role} SPEAKING · ${voice?.name ?? voice?.voiceURI ?? "system voice"}`);
     const finish = () => {
+      status(`${role} RADIO COMPLETE · ${voice?.name ?? voice?.voiceURI ?? "system voice"}`);
       if (finishActive === finish) finishActive = null;
       resolve();
     };
     finishActive = finish;
     u.onend = finish;
-    u.onerror = finish;
+    u.onerror = (e) => {
+      finish();
+      status(`RADIO ERROR · ${e.error} · check browser audio permissions`);
+    };
     speechSynthesis.speak(u);
   });
 }
@@ -106,6 +136,7 @@ export function speak(who: string, text: string) {
 }
 export function silence() {
   generation++;
+  status("RADIO STANDBY");
   stopActive?.();
   stopActive = null;
   if (typeof window !== "undefined" && "speechSynthesis" in window) speechSynthesis.cancel();

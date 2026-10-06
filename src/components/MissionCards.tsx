@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMissionStore } from "../store/useMissionStore";
-import { choose, type Choice } from "../sim/loop";
+import { choose, runMission, type Choice } from "../sim/loop";
 import { formatDuration, formatEta, NATO } from "../sim/estimate";
 import { SortieCompleteCard } from "./OpsPanels";
 import { RiskGauge } from "./RiskGauge";
@@ -208,13 +208,12 @@ export function MissionCards() {
         <div className="flex gap-2">
           <Btn
             onClick={() =>
-              useMissionStore.setState({
-                draft: `Proceed to ${proposal.target}, bearing ${pad3(proposal.bearing)}, ${proposal.distance_m} m — ${proposal.rationale}`,
-                proposal: null,
-              })
+              void runMission(
+                `Mission Control assigns: ${proposal.target}, bearing ${pad3(proposal.bearing)}, ${proposal.distance_m} metres. ${proposal.rationale}. Acquire one core if safe, then return to the exact staging site. Do not traverse slopes above 22 degrees.`,
+              )
             }
           >
-            Accept Proposal
+            UPLINK MISSION CONTROL TASK
           </Btn>
           <Btn tone="label" onClick={() => useMissionStore.setState({ proposal: null })}>
             Dismiss

@@ -9,7 +9,7 @@ import {
   type ElementRef,
 } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { OrbitControls, useGLTF, useTexture } from "@react-three/drei";
+import { OrbitControls, Line, Html, useGLTF, useTexture } from "@react-three/drei";
 import * as THREE from "three";
 import { useMissionStore } from "../store/useMissionStore";
 import { heightAt, type TerrainData } from "../sim/terrain";
@@ -163,6 +163,82 @@ function Rover({ data }: { data: TerrainData }) {
   return (
     <group ref={root}>
       <primitive object={model} dispose={null} />
+    </group>
+  );
+}
+
+function TraverseOverlay({ data }: { data: TerrainData }) {
+  const trail = useMissionStore((s) => s.trail);
+  const plan = useMissionStore((s) => s.plannedPath);
+  const samples = useMissionStore((s) => s.samples);
+  const points = (a: { col: number; row: number }[]) =>
+    a.map((p) => {
+      const g = gridToScene(p.col, p.row);
+      return [g.x, surfaceHeight(data, p.col, p.row) + 0.5, g.z] as [number, number, number];
+    });
+  return (
+    <>
+      {trail.length > 1 && <Line points={points(trail)} color="#00e7b4" lineWidth={3} />}
+      {plan.length > 1 && (
+        <Line
+          points={points(plan)}
+          color="#27b9ff"
+          lineWidth={1.5}
+          dashed
+          dashSize={5}
+          gapSize={3}
+        />
+      )}
+      {samples.map((p, i) => {
+        const g = gridToScene(p.col, p.row);
+        return (
+          <group key={i} position={[g.x, surfaceHeight(data, p.col, p.row) + 0.12, g.z]}>
+            <mesh rotation={[-Math.PI / 2, 0, 0]}>
+              <ringGeometry args={[0.8, 1.3, 32]} />
+              <meshBasicMaterial color="#ffd06a" side={THREE.DoubleSide} />
+            </mesh>
+            <mesh position={[0, 1, 0]}>
+              <cylinderGeometry args={[0.06, 0.06, 2, 8]} />
+              <meshBasicMaterial color="#ffd06a" />
+            </mesh>
+            <Html position={[0, 2.5, 0]} center distanceFactor={40}>
+              <span className="whitespace-nowrap rounded bg-black/80 px-2 py-1 text-[10px] text-amber-300">
+                CORE {i + 1} · H₂O {p.reading.waterIce.toFixed(1)}%
+              </span>
+            </Html>
+          </group>
+        );
+      })}
+    </>
+  );
+}
+function DrillEffects({ data }: { data: TerrainData }) {
+  const root = useRef<THREE.Group>(null);
+  useFrame(({ clock }) => {
+    if (!root.current) return;
+    const s = useMissionStore.getState();
+    root.current.visible = s.status === "DRILLING";
+    const p = gridToScene(s.col, s.row);
+    const b = (s.heading * Math.PI) / 180;
+    root.current.position.set(
+      p.x + Math.sin(b) * 2,
+      surfaceHeight(data, s.col, s.row) + 0.15,
+      p.z - Math.cos(b) * 2,
+    );
+    root.current.children.forEach((m, i) => {
+      const t = clock.elapsedTime * 2 + i;
+      m.position.set(Math.sin(t * 3 + i) * 1.5, (t % 1) * 1.3, Math.cos(t * 2 + i) * 1.5);
+      m.scale.setScalar(0.1 + (1 - (t % 1)) * 0.15);
+    });
+  });
+  return (
+    <group ref={root} visible={false}>
+      {Array.from({ length: 16 }, (_, i) => (
+        <mesh key={i}>
+          <sphereGeometry args={[1, 6, 4]} />
+          <meshBasicMaterial color="#b8b2a4" transparent opacity={0.5} />
+        </mesh>
+      ))}
     </group>
   );
 }
@@ -331,6 +407,8 @@ export function SceneView3D() {
               <Sun data={data} />
               <Terrain data={data} />
               <Rover data={data} />
+              <TraverseOverlay data={data} />
+              <DrillEffects data={data} />
               <CameraRig data={data} mode={cameraMode} onInteract={() => setCameraMode("ORBIT")} />
             </Canvas>
           </Suspense>
@@ -360,7 +438,7 @@ export function SceneView3D() {
       )}
       {!mapOnly && (
         <div className="pointer-events-none absolute right-3 top-3 font-mono text-[10px] text-label">
-          DRAG TO ROTATE · SCROLL TO ZOOM · RIGHT DRAG TO PAN
+          DRAG TO ROTATE · SCROLL TO ZOOM · GREEN: TRAVELLED · GOLD: CORE
         </div>
       )}
       <button

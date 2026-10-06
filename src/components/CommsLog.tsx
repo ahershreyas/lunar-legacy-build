@@ -1,10 +1,11 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useSyncExternalStore } from "react";
 import { Satellite } from "lucide-react";
 import { useMissionStore } from "../store/useMissionStore";
 import { formatMET } from "../utils/coords";
-import { speak } from "../utils/radioVoice";
+import { speak, unlockAudio, getRadioStatus, subscribeRadio } from "../utils/radioVoice";
 
 export function CommsLog() {
+  const radio = useSyncExternalStore(subscribeRadio, getRadioStatus, () => "RADIO STANDBY");
   const log = useMissionStore((s) => s.log);
   const scrollRef = useRef<HTMLDivElement>(null);
   const spoken = useRef(-1);
@@ -35,6 +36,9 @@ export function CommsLog() {
           Comm Downlink
         </h2>
       </header>
+      <p role="status" className="mb-2 text-[10px] text-telemetry">
+        {radio}
+      </p>
       <div
         ref={scrollRef}
         className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1 font-mono text-[11px] leading-relaxed"
@@ -56,6 +60,18 @@ export function CommsLog() {
             >
               {e.who === "CONTROL" ? "MISSION CONTROL" : e.who}
             </span>{" "}
+            {e.voice && (
+              <button
+                aria-label={`Replay ${e.who === "CONTROL" ? "Mission Control" : "Rover 1"} transmission ${i + 1}`}
+                className="mr-1 text-telemetry"
+                onClick={() => {
+                  unlockAudio();
+                  speak(e.who, e.text);
+                }}
+              >
+                ▶
+              </button>
+            )}
             <span
               className={
                 e.tone === "abort" ? "text-abort" : e.tone === "hazard" ? "text-hazard" : ""
