@@ -21,12 +21,13 @@ const PRESETS = [
 export function GoalInput() {
   const goal = useMissionStore((s) => s.goal);
   const draft = useMissionStore((s) => s.draft);
+  const link = useMissionStore((s) => s.link);
   const running = useMissionStore((s) => s.running);
   const appendLog = useMissionStore((s) => s.appendLog);
   const setDraft = (d: string) => useMissionStore.setState({ draft: d });
 
   const transmit = (text = draft.trim()) => {
-    if (!text || running) return;
+    if (!text || running || link !== "READY") return;
     useMissionStore.setState({ goal: text, draft: "" });
     appendLog("COMMANDER", text);
     void runMission(text);
@@ -39,7 +40,7 @@ export function GoalInput() {
         {PRESETS.map((p) => (
           <button
             key={p.label}
-            disabled={running}
+            disabled={running || link !== "READY"}
             onClick={() => transmit(p.goal)}
             title={p.goal}
             className="rounded border border-white/10 bg-well px-2 py-1 font-mono text-[10px] uppercase tracking-widest text-label transition-colors hover:text-telemetry disabled:opacity-40"
@@ -56,16 +57,17 @@ export function GoalInput() {
       <div className="flex h-9 items-center gap-3">
         <span className="text-[11px] uppercase tracking-[0.18em] text-label">Capcom Uplink</span>
         <input
+          maxLength={500}
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && transmit()}
           placeholder="State a mission goal in plain English…"
           className="h-9 flex-1 rounded border border-white/10 bg-well px-3 font-mono text-xs text-log placeholder:text-label/60 focus:border-telemetry/50 focus:outline-none"
         />
-        <PushToTalk disabled={running} />
+        <PushToTalk disabled={running || link !== "READY"} />
         <button
           onClick={() => transmit()}
-          disabled={running}
+          disabled={running || link !== "READY"}
           className="flex h-9 items-center gap-2 rounded border border-telemetry/40 bg-telemetry/10 px-4 font-mono text-[11px] uppercase tracking-widest text-telemetry transition-colors hover:bg-telemetry/20 disabled:opacity-40"
         >
           Transmit → 1.28 s

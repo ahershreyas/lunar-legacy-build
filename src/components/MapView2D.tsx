@@ -30,7 +30,26 @@ export function MapView2D({ overview = false }: { overview?: boolean }) {
   // Build the shaded relief once per terrain load (offscreen, 1024^2).
   useEffect(() => {
     if (!terrain) return;
-    reliefRef.current = buildRelief(terrain);
+    const relief = buildRelief(terrain);
+    reliefRef.current = relief;
+    const image = new Image();
+    let cancelled = false;
+    image.onload = () => {
+      if (cancelled) return;
+      const map = document.createElement("canvas");
+      map.width = GRID_SIZE;
+      map.height = GRID_SIZE;
+      const ctx = map.getContext("2d");
+      if (!ctx) return;
+      ctx.drawImage(image, 0, 0, GRID_SIZE, GRID_SIZE);
+      // Real albedo is the overview background; elevation supplies the 3D geometry.
+      reliefRef.current = map;
+    };
+    image.src = "/texture.jpg";
+    return () => {
+      cancelled = true;
+      image.onload = null;
+    };
   }, [terrain]);
 
   // Draw loop: rAF so the rover glides between 4 Hz store updates.

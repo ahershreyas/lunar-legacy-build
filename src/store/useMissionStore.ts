@@ -80,6 +80,11 @@ export const LANDING_SITE = { col: 320, row: 687 } as const;
 export const TIME_COMPRESSION = 120;
 
 interface MissionState {
+  link: "OFFLINE" | "CHECKING" | "READY" | "UNCONFIGURED" | "FAILED";
+  linkMessage: string;
+  aiProvider: string;
+  groundLink: "STANDBY" | "THINKING" | "ONLINE" | "UNAVAILABLE";
+  roverLink: "STANDBY" | "THINKING" | "ONLINE" | "UNAVAILABLE";
   terrain: TerrainData | null;
   col: number;
   row: number;
@@ -115,6 +120,11 @@ interface MissionState {
 }
 
 export const useMissionStore = create<MissionState>((set) => ({
+  link: "OFFLINE",
+  linkMessage: "Initialize the mission link to activate both Astra agents.",
+  aiProvider: "",
+  groundLink: "STANDBY",
+  roverLink: "STANDBY",
   terrain: null,
   col: LANDING_SITE.col,
   row: LANDING_SITE.row,

@@ -21,6 +21,7 @@ import { applyMove, applyDrill, DRAIN_PER_100M } from "./actions";
 import { quoteRoute, routePoints, countDrills, NATO, type Leg, type Quote } from "./estimate";
 import { transmit, Aborted } from "./comms";
 import { bearingDeg, gridDistanceM } from "../utils/coords";
+import { silence } from "../utils/radioVoice";
 import type { TerrainData } from "./terrain";
 
 const MAX_STEPS = 160;
@@ -36,6 +37,8 @@ let note = "";
 // Live route tracking (absolute stations remaining) for the progress panel.
 let route: { col: number; row: number; purpose?: string }[] = [];
 let returning = false;
+let riskAccepted = false;
+let acceptedAlternative = "";
 let drillsLeft = 0;
 let doneM = 0;
 let sortieStartMet = 0;
@@ -95,6 +98,7 @@ function awaitChoice(pending: Pending, signal: AbortSignal): Promise<Choice> {
 }
 
 export function emergencyHold() {
+  silence();
   idleCtrl?.abort();
   idleCtrl = null;
   if (!ctrl) return;
@@ -134,6 +138,8 @@ function stateOf(extra: Record<string, unknown> = {}) {
     drain_pct_per_100m: DRAIN_PER_100M,
     samples_taken: s.samples.filter((x) => x.met >= sortieStartMet).length,
     phase: returning ? "RETURNING" : "EXPLORING",
+    commander_accepted_risk: riskAccepted,
+    approved_alternative: acceptedAlternative,
     samples: s.samples.filter((x) => x.met >= sortieStartMet).slice(-3),
     ...extra,
   };
@@ -173,6 +179,8 @@ async function ask<T = RoverDecision>(
 ): Promise<T | null> {
   await transmit(signal, `UPLINK · ${label}`);
   if (signal.aborted) throw new Aborted();
+  const linkField = data.mode === "ground" ? "groundLink" : "roverLink";
+  set({ [linkField]: "THINKING" });
   const res = await roverThink({ data, signal }).catch((e) => ({
     ok: false as const,
     status: 0,
@@ -180,10 +188,12 @@ async function ask<T = RoverDecision>(
   }));
   if (signal.aborted) throw new Aborted();
   if (!res.ok) {
+    set({ [linkField]: "UNAVAILABLE", link: "FAILED", linkMessage: res.message });
     S().appendLog("SYSTEM", `LOS — ${res.message}`, "abort");
     return null;
   }
   await transmit(signal, `DOWNLINK · ${label}`);
+  set({ [linkField]: "ONLINE" });
   return res.decision as T;
 }
 
@@ -363,7 +373,15 @@ async function groundCall(
 
 export async function controlIdleProposal() {
   const s = S();
-  if (!s.terrain || s.running || s.status !== "IDLE" || idleCtrl || s.proposal) return;
+  if (
+    !s.terrain ||
+    s.link !== "READY" ||
+    s.running ||
+    s.status !== "IDLE" ||
+    idleCtrl ||
+    s.proposal
+  )
+    return;
   if (featuresFor !== s.terrain) {
     features = surveyFeatures(s.terrain);
     featuresFor = s.terrain;
@@ -437,6 +455,7 @@ async function negotiate(
       return null;
     }
     if (c === "accept_alt") {
+      acceptedAlternative = d.alternative?.description ?? "";
       S().appendLog("COMMANDER", `ACCEPT ALTERNATE — ${d.alternative?.description ?? ""}`);
       return alt;
     }
@@ -473,6 +492,7 @@ async function negotiate(
       "Commander accepted the risk. Override confirmed — proceed.",
       "hazard",
     );
+    riskAccepted = true;
     return legs.length ? legs : [{ bearing: d.heading, distance_m: d.distance }];
   }
   if (d.action === "CAUTION") {
@@ -737,7 +757,7 @@ async function stepLoop(t: TerrainData, signal: AbortSignal, goal: string) {
 
 export async function runMission(goal: string) {
   const t = S().terrain;
-  if (!t || S().running) return;
+  if (!t || S().running || S().link !== "READY") return;
   if (featuresFor !== t) {
     features = surveyFeatures(t);
     featuresFor = t;
@@ -747,6 +767,8 @@ export async function runMission(goal: string) {
   ctrl = new AbortController();
   const signal = ctrl.signal;
   returning = false;
+  riskAccepted = false;
+  acceptedAlternative = "";
   route = [];
   doneM = 0;
   drillsLeft = 0;

@@ -9,8 +9,12 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
-const MODEL = "openai/gpt-6-astra";
-const GATEWAY = "https://ai.gateway.lovable.dev/v1/responses";
+import { aiProvider } from "./ai-provider";
+
+export const missionLinkStatus = createServerFn({ method: "GET" }).handler(async () => {
+  const c = aiProvider();
+  return { configured: !!c.key, provider: c.provider, model: c.model };
+});
 
 const SYSTEM_PROMPT =
   "You are an autonomous lunar rover at the Moon's south pole. Water ice survives only in permanently shadowed cold traps — use the illumination data to reason about where it would be. Ilmenite favours low, flat basaltic ground. Never traverse slopes above 22 degrees. Manage your battery: returning alive outranks completing the task. If an order would strand or roll you, answer REFUSE and say why in one line. You never invent sample data — drilling results come back from the instrument. Keep every reason and transmission under 140 characters.";
@@ -30,10 +34,12 @@ Target register examples:
 - Hazard: "Mission Control, Rover 1... intercepted unmapped crater depression four meters on current heading. Incline exceeds safety margin at two-eight degrees. Halting forward drive and engaging local detour three-zero degrees starboard... ETA extended thirty seconds."
 - Science: "Mission Control, Rover 1. Core acquired at thirty centimeters. Spectrometry returns volatiles at four-point-one percent by weight. Confirming water ice signature... downlinking now."
 - Refusal: "Negative, Commander. Eight kilometers round trip exceeds my power margin by three-seven percent. I would not get back. Request a closer target... standing by."
-Transmissions may run to 260 characters; reasons stay under 140.`;
+All transmissions and reasons must stay under 140 characters. Examples show cadence; compress them to this limit.`;
 
 const OPERATING_RULES = `
 Operating rules (you apply them; nobody else will):
+- state.commander_accepted_risk means the Commander completed BOTH override confirmations. Continue the authorized route while reporting its risk; do not repeatedly ask for the same confirmation. A materially different new hazard can require a new hold. The declared 15% power safing mode remains active.
+- state.approved_alternative records the Commander's accepted substitute destination. It replaces the original destination while retaining the original science objective.
 - Slope above 22 degrees means rollover risk: reroute or REFUSE.
 - A drop greater than 0.8 m in one step is a crater lip: halt and divert.
 - If battery % is below (home_distance_m / 100) * 1.3 * drain_pct_per_100m, RETURN regardless of the goal.
@@ -218,21 +224,29 @@ export const roverThink = createServerFn({ method: "POST" })
     return { ...d, history: (d.history ?? []).slice(-8) };
   })
   .handler(async ({ data }): Promise<ThinkResult> => {
-    const apiKey = process.env["LOVABLE_API_KEY"];
-    if (!apiKey) return { ok: false, status: 401, message: "Uplink not configured." };
+    const provider = aiProvider();
+    const apiKey = provider.key;
+    if (!apiKey)
+      return {
+        ok: false,
+        status: 401,
+        message:
+          "Mission link unavailable — no server AI credential. Initialize the link for setup instructions.",
+      };
     const ground = data.mode === "ground";
 
-    const res = await fetch(GATEWAY, {
+    const res = await fetch(provider.url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Lovable-API-Key": apiKey,
+        ...(provider.provider === "Lovable"
+          ? { "Lovable-API-Key": apiKey, "X-Lovable-AIG-SDK": "fetch" }
+          : {}),
         Authorization: `Bearer ${apiKey}`,
-        "X-Lovable-AIG-SDK": "fetch",
       },
       signal: AbortSignal.timeout(60000),
       body: JSON.stringify({
-        model: MODEL,
+        model: provider.model,
         instructions: ground
           ? GROUND_PROMPT + "\n" + RADIO
           : SYSTEM_PROMPT + "\n" + OPERATING_RULES + "\n" + RADIO,

@@ -45,7 +45,12 @@ const flush = async () => {
 beforeEach(() => {
   vi.useFakeTimers();
   think.mockReset();
-  useMissionStore.setState({ ...initial, terrain: flat, trail: [{ ...LANDING_SITE }] });
+  useMissionStore.setState({
+    ...initial,
+    terrain: flat,
+    link: "READY",
+    trail: [{ ...LANDING_SITE }],
+  });
 });
 afterEach(() => {
   emergencyHold();
@@ -196,6 +201,12 @@ describe("Mission lifecycle", () => {
     expect(useMissionStore.getState().summary).toBeNull();
     choose("abort");
     await task;
+  });
+  it("does not start a sortie when the mission link is offline", async () => {
+    useMissionStore.setState({ link: "OFFLINE" });
+    await runMission("go east");
+    expect(think).not.toHaveBeenCalled();
+    expect(useMissionStore.getState().col).toBe(320);
   });
   it("purges a late decision after emergency hold", async () => {
     let resolve!: (v: unknown) => void;

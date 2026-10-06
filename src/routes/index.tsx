@@ -8,11 +8,11 @@ import { MapView2D } from "../components/MapView2D";
 import { SubsystemCard } from "../components/SubsystemCard";
 import { SpectrometryCard } from "../components/SpectrometryCard";
 import { CommsLog } from "../components/CommsLog";
+import { MissionLink } from "../components/MissionLink";
 import { GoalInput } from "../components/GoalInput";
 import { LoadingScreen } from "../components/LoadingScreen";
 import { MissionCards, TransmissionBar, LiveProgress } from "../components/MissionCards";
 import { RiskPanel, Attribution } from "../components/OpsPanels";
-import { controlIdleProposal } from "../sim/loop";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -48,7 +48,6 @@ function Index() {
         if (cancelled) return;
         setTerrain(t);
         appendLog("SYSTEM", "AOS — Rover 1 nominal. Telemetry downstream.");
-        void controlIdleProposal();
       })
       .catch((err) => {
         if (!cancelled) setFailed(String(err));
@@ -80,15 +79,15 @@ function Index() {
             </div>
           )}
         </div>
-        <div
-          className="flex min-h-0 min-w-0 flex-col gap-3 overflow-y-auto"
-          style={{ flex: "35 1 0%" }}
-        >
-          <SubsystemCard />
-          <SpectrometryCard />
-          <RiskPanel />
-          <LiveProgress />
-          <TransmissionBar />
+        <div className="flex min-h-0 min-w-0 flex-col gap-3" style={{ flex: "35 1 0%" }}>
+          <div className="min-h-0 flex-[2.4] space-y-3 overflow-y-auto">
+            <MissionLink />
+            <SubsystemCard />
+            <SpectrometryCard />
+            <RiskPanel />
+            <LiveProgress />
+            <TransmissionBar />
+          </div>
           <CommsLog />
         </div>
       </main>

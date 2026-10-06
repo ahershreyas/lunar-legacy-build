@@ -1,4 +1,4 @@
-# UMBRA repairs through Prompt 4
+# UMBRA repairs through Prompt 5
 
 ## What changed
 
@@ -18,7 +18,7 @@
 ## Verification
 
 - TypeScript: `bunx tsc --noEmit`.
-- Ten Vitest tests including approval, sampling, return arrival, HOLD polling, override confirmation, aborting late decisions, coordinate round trips, battery/ETA arithmetic, boundaries and the provided 4.1% cold-trap reading.
+- Fifteen Vitest tests including approval, sampling, return arrival, HOLD polling, override confirmation, aborting late decisions, coordinate round trips, battery/ETA arithmetic, boundaries and the provided 4.1% cold-trap reading.
 - Production build: `bun run build`.
 - ESLint: no errors; existing React Fast Refresh export warnings remain.
 - Browser: real terrain/model render, starting slope 2.9°, illumination 65%, no console errors, successful switching between 3D camera and 2D survey. Tested desktop and compact viewport.
@@ -28,3 +28,13 @@
 The local checkout has no LOVABLE_API_KEY configured. Rendering and deterministic mission lifecycle tests pass, but these do not prove live Astra reasoning quality. Reopen the connected Lovable preview after sync and run the four supplied mission goals, checking each plan before approving. AI-selected routes can vary, so computed risk and duration need not match reference figures exactly.
 
 The server uses the existing Lovable AI Gateway integration. No key is sent to the browser. No infrastructure migration or deployment outside the existing connected project was performed.
+
+## Interactive controls and mission activation
+
+- Restored the original supplied lunar texture in both views; terrain elevations span 0–3,083.5 metres. The close landing-site view naturally shows a small, comparatively flat patch. Terrain Overview shows the whole relief.
+- Added drag-to-orbit, wheel zoom, right-button pan, Terrain Overview and Follow Rover controls.
+- Added explicit Initialize Mission Link / Enable GPT + Voice, separate Ground/Rover connection indicators, and actionable server configuration errors. Missions cannot start with an offline link.
+- Supports the existing Lovable gateway or a server-only OPENAI_API_KEY in .env.local for local development. .env.example documents configuration; environment secrets are excluded from Git.
+- Both AI roles retain their distinct prompts. Voice uses separate available English voices, rate 0.90, pitch 0.94 and Quindar tones; emergency hold clears queued speech. Text remains visible.
+- Commander override and accepted alternative are retained in subsequent model requests. No repeated refusal for the same already-confirmed risk.
+- Browser verified camera rotation and missing-credential handling. Automated tests verify movement, sample/return lifecycle, approval safeguards, provider selection and audio cancellation. Hosted live mission results are recorded separately after GitHub sync.

@@ -4,8 +4,14 @@
 //     nitro (build-only using cloudflare as a default target), VITE_* env injection, @ path alias,
 //     React/TanStack dedupe, error logger plugins, and sandbox detection (port/host/strictPort).
 // You can pass additional config via defineConfig({ vite: { ... }, etc... }) if needed.
+import { loadEnv } from "vite";
 import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 
+// Load only server credential names; never define or expose them as VITE_* variables.
+const serverEnv = loadEnv("development", process.cwd(), "");
+for (const name of ["OPENAI_API_KEY", "OPENAI_MODEL", "LOVABLE_API_KEY", "AI_PROVIDER"]) {
+  if (!process.env[name] && serverEnv[name]) process.env[name] = serverEnv[name];
+}
 export default defineConfig({
   tanstackStart: {
     // Redirect TanStack Start's bundled server entry to src/server.ts (our SSR error wrapper).

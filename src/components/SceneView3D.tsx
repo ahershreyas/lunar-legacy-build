@@ -1,6 +1,15 @@
-import { Component, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  Component,
+  Suspense,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+  type ElementRef,
+} from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { useGLTF, useTexture } from "@react-three/drei";
+import { OrbitControls, useGLTF, useTexture } from "@react-three/drei";
 import * as THREE from "three";
 import { useMissionStore } from "../store/useMissionStore";
 import { heightAt, type TerrainData } from "../sim/terrain";
@@ -61,10 +70,8 @@ function Terrain({ data }: { data: TerrainData }) {
 function Rover({ data }: { data: TerrainData }) {
   const loaded = useGLTF("/models/rover.glb");
   const root = useRef<THREE.Group>(null);
-  const cameraReady = useRef(false);
   const prev = useRef<{ col: number; row: number } | null>(null);
   const pose = useRef<{ col: number; row: number } | null>(null);
-  const { camera } = useThree();
   const model = useMemo(() => {
     const m = loaded.scene.clone(true);
     m.traverse((obj) => {
@@ -152,21 +159,80 @@ function Rover({ data }: { data: TerrainData }) {
     for (const wheel of wheels) if (wheel) wheel.rotation.x += (speed * delta) / 0.5;
     if (drill) drill.rotation.x += ((s.status === "DRILLING" ? 0.65 : 0) - drill.rotation.x) * k;
     prev.current = { ...p };
-    const cx = x - Math.sin(b) * 35 + Math.cos(b) * 12,
-      cz = z + Math.cos(b) * 35 + Math.sin(b) * 12;
-    const cg = sceneToGrid(cx, cz);
-    math.cam.set(cx, Math.max(y + 16, surfaceHeight(data, cg.col, cg.row) + 8), cz);
-    if (!cameraReady.current) {
-      camera.position.copy(math.cam);
-      cameraReady.current = true;
-    } else camera.position.lerp(math.cam, 1 - Math.exp(-4 * delta));
-    math.look.set(x, y + 1.8, z);
-    camera.lookAt(math.look);
   });
   return (
     <group ref={root}>
       <primitive object={model} dispose={null} />
     </group>
+  );
+}
+
+type CameraMode = "CHASE" | "ORBIT" | "SURVEY";
+function CameraRig({
+  data,
+  mode,
+  onInteract,
+}: {
+  data: TerrainData;
+  mode: CameraMode;
+  onInteract: () => void;
+}) {
+  const { camera } = useThree();
+  const controls = useRef<ElementRef<typeof OrbitControls>>(null);
+  const initialized = useRef(false);
+  const vectors = useMemo(() => ({ eye: new THREE.Vector3(), target: new THREE.Vector3() }), []);
+  useEffect(() => {
+    const s = useMissionStore.getState(),
+      p = gridToScene(s.col, s.row),
+      y = surfaceHeight(data, s.col, s.row);
+    if (mode === "SURVEY") {
+      vectors.target.set(0, (data.minElev + data.maxElev) / 2, 0);
+      vectors.eye.set(11000, data.maxElev + 16000, 12000);
+      camera.position.copy(vectors.eye);
+      controls.current?.target.copy(vectors.target);
+      controls.current?.update();
+    } else if (!initialized.current || mode === "CHASE") {
+      vectors.target.set(p.x, y + 1.8, p.z);
+      camera.position.set(p.x + 12, y + 16, p.z + 35);
+      controls.current?.target.copy(vectors.target);
+      controls.current?.update();
+    }
+    initialized.current = true;
+  }, [mode, data, camera, vectors]);
+  useFrame((_, dt) => {
+    const c = controls.current;
+    if (!c) return;
+    if (mode === "CHASE") {
+      const s = useMissionStore.getState(),
+        p = gridToScene(s.col, s.row),
+        b = (s.heading * Math.PI) / 180;
+      const y = surfaceHeight(data, s.col, s.row);
+      const x = p.x - Math.sin(b) * 35 + Math.cos(b) * 12,
+        z = p.z + Math.cos(b) * 35 + Math.sin(b) * 12;
+      const g = sceneToGrid(x, z);
+      vectors.eye.set(x, Math.max(y + 16, surfaceHeight(data, g.col, g.row) + 8), z);
+      vectors.target.set(p.x, y + 1.8, p.z);
+      const k = 1 - Math.exp(-4 * Math.min(dt, 0.1));
+      camera.position.lerp(vectors.eye, k);
+      c.target.lerp(vectors.target, k);
+      c.update();
+    } else {
+      const g = sceneToGrid(camera.position.x, camera.position.z);
+      if (g.col >= 0 && g.col <= 1023 && g.row >= 0 && g.row <= 1023)
+        camera.position.y = Math.max(camera.position.y, surfaceHeight(data, g.col, g.row) + 4);
+    }
+  });
+  return (
+    <OrbitControls
+      ref={controls}
+      makeDefault
+      enableDamping
+      dampingFactor={0.08}
+      minDistance={10}
+      maxDistance={34000}
+      maxPolarAngle={Math.PI * 0.49}
+      onStart={onInteract}
+    />
   );
 }
 
@@ -220,6 +286,7 @@ export function SceneView3D() {
   const data = useMissionStore((s) => s.terrain);
   const [ready, setReady] = useState(false);
   const [mapOnly, setMapOnly] = useState(false);
+  const [cameraMode, setCameraMode] = useState<CameraMode>("CHASE");
   useEffect(() => {
     const c = document.createElement("canvas");
     const gl = c.getContext("webgl2");
@@ -260,17 +327,42 @@ export function SceneView3D() {
                 });
               }}
             >
-              <ambientLight intensity={0.1} />
+              <ambientLight intensity={0.3} />
               <Sun data={data} />
               <Terrain data={data} />
               <Rover data={data} />
+              <CameraRig data={data} mode={cameraMode} onInteract={() => setCameraMode("ORBIT")} />
             </Canvas>
           </Suspense>
         </SceneBoundary>
       )}
       <div className="pointer-events-none absolute left-3 top-3 font-mono text-[10px] uppercase tracking-[0.2em] text-label">
-        ROVER 1 · {mapOnly ? "SURFACE SURVEY" : "SURFACE CAMERA · CHASE 35 M"}
+        ROVER 1 ·{" "}
+        {mapOnly
+          ? "SURFACE SURVEY"
+          : `${cameraMode === "SURVEY" ? "TERRAIN OVERVIEW" : cameraMode === "ORBIT" ? "ORBIT CAMERA" : "CHASE 35 M"} · DEM 20 M`}
       </div>
+      {!mapOnly && (
+        <div className="absolute bottom-3 right-28 flex gap-2">
+          <button
+            onClick={() => setCameraMode("SURVEY")}
+            className="rounded border border-white/20 bg-card/95 px-3 py-2 font-mono text-[10px] text-telemetry"
+          >
+            TERRAIN OVERVIEW
+          </button>
+          <button
+            onClick={() => setCameraMode("CHASE")}
+            className="rounded border border-white/20 bg-card/95 px-3 py-2 font-mono text-[10px] text-telemetry"
+          >
+            FOLLOW ROVER
+          </button>
+        </div>
+      )}
+      {!mapOnly && (
+        <div className="pointer-events-none absolute right-3 top-3 font-mono text-[10px] text-label">
+          DRAG TO ROTATE · SCROLL TO ZOOM · RIGHT DRAG TO PAN
+        </div>
+      )}
       <button
         onClick={() => setMapOnly((v) => !v)}
         className="absolute bottom-3 right-3 rounded border border-white/20 bg-card/95 px-3 py-2 font-mono text-[10px] text-telemetry"
