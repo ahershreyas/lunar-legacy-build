@@ -12,8 +12,8 @@ const AXLE_HALF_WIDTH = 1.98;
 const AXLE_HALF_LENGTH = 2.89;
 const MODEL_SCALE = 0.015;
 const WHEEL_RADIUS = 0.5;
-const CHASE_DISTANCE = 44;
-const CHASE_HEIGHT = 16;
+const CHASE_DISTANCE = 30;
+const CHASE_HEIGHT = 5;
 const MODEL_PATH = "/models/rover.glb";
 
 type RoverRefs = {
@@ -28,7 +28,6 @@ const desiredLook = new THREE.Vector3();
 const lookTarget = new THREE.Vector3();
 const targetQuaternion = new THREE.Quaternion();
 const forwardVector = new THREE.Vector3();
-const rightVector = new THREE.Vector3();
 const cameraForward = new THREE.Vector3();
 const targetEuler = new THREE.Euler(0, 0, 0, "YXZ");
 
@@ -148,18 +147,26 @@ function Rover({ terrain, originCol, originRow, originHeight }: {
 
     const yaw = THREE.MathUtils.degToRad(state.heading);
     forwardVector.set(Math.sin(yaw), 0, -Math.cos(yaw));
-    rightVector.set(Math.cos(yaw), 0, Math.sin(yaw));
-
-    const frontCol = state.col + (forwardVector.x * AXLE_HALF_LENGTH + rightVector.x * AXLE_HALF_WIDTH) / METRES_PER_SAMPLE;
-    const frontRow = state.row + (forwardVector.z * AXLE_HALF_LENGTH + rightVector.z * AXLE_HALF_WIDTH) / METRES_PER_SAMPLE;
-    const rearCol = state.col + (-forwardVector.x * AXLE_HALF_LENGTH + rightVector.x * AXLE_HALF_WIDTH) / METRES_PER_SAMPLE;
-    const rearRow = state.row + (-forwardVector.z * AXLE_HALF_LENGTH + rightVector.z * AXLE_HALF_WIDTH) / METRES_PER_SAMPLE;
-    const frontHeight = heightAt(terrain, frontCol, frontRow);
-    const rearHeight = heightAt(terrain, rearCol, rearRow);
-    const averageHeight = (frontHeight + rearHeight) * 0.5 - originHeight - 0.02;
+    const rightX = Math.cos(yaw);
+    const rightZ = Math.sin(yaw);
+    const sampleAxle = (forwardOffset: number, rightOffset: number) => heightAt(
+      terrain,
+      state.col + (forwardVector.x * forwardOffset + rightX * rightOffset) / METRES_PER_SAMPLE,
+      state.row + (forwardVector.z * forwardOffset + rightZ * rightOffset) / METRES_PER_SAMPLE,
+    );
+    const frontLeft = sampleAxle(AXLE_HALF_LENGTH, -AXLE_HALF_WIDTH);
+    const frontRight = sampleAxle(AXLE_HALF_LENGTH, AXLE_HALF_WIDTH);
+    const rearLeft = sampleAxle(-AXLE_HALF_LENGTH, -AXLE_HALF_WIDTH);
+    const rearRight = sampleAxle(-AXLE_HALF_LENGTH, AXLE_HALF_WIDTH);
+    const frontHeight = (frontLeft + frontRight) * 0.5;
+    const rearHeight = (rearLeft + rearRight) * 0.5;
+    const leftHeight = (frontLeft + rearLeft) * 0.5;
+    const rightHeight = (frontRight + rearRight) * 0.5;
+    const averageHeight = (frontLeft + frontRight + rearLeft + rearRight) * 0.25 - originHeight - 0.02;
     const rise = frontHeight - rearHeight;
     const pitch = -Math.atan2(rise, AXLE_HALF_LENGTH * 2);
-    targetEuler.set(pitch, yaw + Math.PI, 0);
+    const roll = Math.atan2(rightHeight - leftHeight, AXLE_HALF_WIDTH * 2);
+    targetEuler.set(pitch, yaw + Math.PI, roll);
     targetQuaternion.setFromEuler(targetEuler);
 
     targetPosition.set(local.x, averageHeight, local.z);
@@ -179,7 +186,7 @@ function Rover({ terrain, originCol, originRow, originHeight }: {
     desiredCamera.copy(rover.position).addScaledVector(cameraForward, -CHASE_DISTANCE);
     desiredCamera.y += CHASE_HEIGHT;
     desiredLook.copy(rover.position).addScaledVector(cameraForward, 8);
-    desiredLook.y += 1.4;
+    desiredLook.y += 0.15;
     camera.position.lerp(desiredCamera, 1 - Math.exp(-4 * delta));
     lookTarget.lerp(desiredLook, 1 - Math.exp(-6 * delta));
     camera.lookAt(lookTarget);
@@ -233,13 +240,13 @@ export function SceneView3D() {
       <Canvas
         shadows
         dpr={[1, 1.5]}
-        camera={{ position: [0, 16, 44], fov: 52, near: 0.1, far: 5000 }}
+        camera={{ position: [0, 5, 30], fov: 24, near: 0.05, far: 5000 }}
         gl={{ antialias: true, powerPreference: "high-performance" }}
       >
         <Scene terrain={terrain} />
       </Canvas>
       <div className="pointer-events-none absolute left-3 top-3 font-mono text-[10px] uppercase tracking-[0.2em] text-label">
-        Surface Camera — Chase 44 m
+        Surface Camera — Chase 30 m
       </div>
     </div>
   );
