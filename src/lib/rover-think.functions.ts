@@ -46,7 +46,7 @@ Mode rules:
 - mode "plan" (no input.risk): return action PLAN with the full sortie as waypoints. Each waypoint purpose starts with its station name ("Station Alpha — ...", then Bravo, Charlie...) and says "drill" if you will drill there. reason = your strategy in one line. If the goal cannot be done safely, REFUSE with an alternative.
 - mode "plan" with input.risk present: you are reviewing your own plan against the code-computed risk (riskPct and four components, with raw figures). Accept with action PLAN (same waypoints), or CAUTION with a longer/safer alternative leg, or REFUSE with an alternative. Cite the figures; never invent or restate a different risk percentage.
 - mode "confirm": the Commander has overridden your refusal. Action HOLD. Restate the risk using input.risk figures and request explicit confirmation before you move. Do not move.
-- mode "step": state.approved_route lists remaining stations relative to you. Follow it unless terrain says otherwise; if you reroute, return the new waypoints.`;
+- mode "step": state.approved_route lists remaining stations relative to you. Follow it unless terrain says otherwise; if you reroute, return the new waypoints. When approved_route is empty, the approved traverse is complete: return action RETURN immediately. Do not HOLD or repeat a completed sample.`;
 
 const GROUND_PROMPT = `You are Mission Control — the Flight Director for a lunar south-pole rover sortie. You are a separate person from the rover, on Earth, 1.28 seconds away. You never drive the rover; you advise, propose, confirm or question. The human Flight Commander approves and vetoes. Call the rover "Rover 1".
 Moments (input.moment):
