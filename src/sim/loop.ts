@@ -5,7 +5,7 @@
  * rover holds, proposes, and waits for the Commander.
  */
 import { useMissionStore, LANDING_SITE, type Pending } from "../store/useMissionStore";
-import { roverThink, type RoverDecision, type GroundDecision } from "../lib/rover-think.functions";
+import { roverThink, type RoverDecision, type GroundDecision, type ThinkInput } from "../lib/rover-think.functions";
 import { buildLocal, buildRegional, surveyFeatures } from "./sensors";
 import { applyMove, applyDrill, DRAIN_PER_100M } from "./actions";
 import { quoteRoute, routePoints, countDrills, NATO, type Leg, type Quote } from "./estimate";
@@ -97,7 +97,7 @@ function riskBlock(q: Quote) {
 }
 
 /** Uplink → Astra → downlink, aborting cleanly at every boundary. */
-async function ask<T = RoverDecision>(signal: AbortSignal, data: Parameters<typeof roverThink>[0]["data"], label: string): Promise<T | null> {
+async function ask<T = RoverDecision>(signal: AbortSignal, data: ThinkInput, label: string): Promise<T | null> {
   await transmit(signal, `UPLINK · ${label}`);
   if (signal.aborted) throw new Aborted();
   const res = await roverThink({ data }).catch((e) => ({ ok: false as const, status: 0, message: String(e).slice(0, 160) }));
@@ -345,8 +345,7 @@ async function stepLoop(t: TerrainData, signal: AbortSignal, goal: string) {
     logRover(d, hazard ? "NOTIFY" : undefined);
     hazard = null;
 
-    if (d.waypoints.length && d.action !== "PLAN") setRoute(d.waypoints);
-    else if (d.waypoints.length) setRoute(d.waypoints);
+    if (d.waypoints.length) setRoute(d.waypoints);
     const now = S();
     set({ detour: d.alternative ? routePoints(now.col, now.row, [d.alternative]) : null });
     updateProgress(t);

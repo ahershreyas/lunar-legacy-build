@@ -138,7 +138,7 @@ export type ThinkResult =
   | { ok: true; decision: RoverDecision | GroundDecision }
   | { ok: false; status: number; message: string };
 
-interface ThinkInput {
+export interface ThinkInput {
   mode: "plan" | "step" | "confirm" | "ground";
   goal: string;
   state: Record<string, unknown>;
