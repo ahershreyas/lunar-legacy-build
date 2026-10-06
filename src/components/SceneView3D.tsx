@@ -495,6 +495,7 @@ export function SceneView3D() {
   const running = useMissionStore((s) => s.running);
   const [ready, setReady] = useState(false);
   const [mapOnly, setMapOnly] = useState(false);
+  const [canRender, setCanRender] = useState(true);
   const [cameraMode, setCameraMode] = useState<CameraMode>("RELIEF");
   useEffect(() => {
     if (running) setCameraMode((mode) => (mode === "SURVEY" ? "RELIEF" : mode));
@@ -503,6 +504,7 @@ export function SceneView3D() {
     const c = document.createElement("canvas");
     const gl = c.getContext("webgl2");
     setMapOnly(!gl);
+    setCanRender(Boolean(gl));
     setReady(true);
     gl?.getExtension("WEBGL_lose_context")?.loseContext();
   }, []);
@@ -517,41 +519,64 @@ export function SceneView3D() {
   if (!ready || !data) return <div className="h-full bg-canvas" />;
   return (
     <div className="relative h-full overflow-hidden rounded-md border border-white/15 bg-canvas">
-      {mapOnly ? (
-        <MapView2D />
-      ) : (
-        <SceneBoundary fallback={fallback}>
-          <Suspense
-            fallback={
-              <div className="flex h-full items-center justify-center font-mono text-xs text-telemetry">
-                ACQUIRING SURFACE VIEW…
-              </div>
-            }
-          >
-            <Canvas
-              shadows
-              dpr={[1, 1.5]}
-              camera={{ fov: 45, near: 0.1, far: 40000 }}
-              onCreated={({ gl }) => {
-                gl.setClearColor("#08090c");
-                gl.toneMappingExposure = 1.05;
-                gl.domElement.addEventListener("webglcontextlost", () => setMapOnly(true), {
-                  once: true,
-                });
-              }}
+      {mapOnly && (
+        <div className="absolute inset-0">
+          <MapView2D />
+        </div>
+      )}
+      {canRender && (
+        <div
+          className="absolute inset-0"
+          style={{
+            visibility: mapOnly ? "hidden" : "visible",
+            pointerEvents: mapOnly ? "none" : "auto",
+          }}
+        >
+          <SceneBoundary fallback={fallback}>
+            <Suspense
+              fallback={
+                <div className="flex h-full items-center justify-center font-mono text-xs text-telemetry">
+                  ACQUIRING SURFACE VIEW…
+                </div>
+              }
             >
-              {/* Presentation fill reveals the supplied lunar texture; sensor illumination remains unchanged. */}
-              <ambientLight intensity={0.7} />
-              <hemisphereLight args={["#e8edf4", "#5b5960", 0.8]} />
-              <Sun data={data} />
-              <Terrain data={data} />
-              <Rover data={data} />
-              <TraverseOverlay data={data} />
-              <DrillEffects data={data} />
-              <CameraRig data={data} mode={cameraMode} onInteract={() => setCameraMode("ORBIT")} />
-            </Canvas>
-          </Suspense>
-        </SceneBoundary>
+              <Canvas
+                frameloop={mapOnly ? "never" : "always"}
+                shadows
+                dpr={[1, 1.5]}
+                camera={{ fov: 45, near: 0.1, far: 40000 }}
+                onCreated={({ gl }) => {
+                  gl.setClearColor("#08090c");
+                  gl.toneMappingExposure = 1.05;
+                  gl.domElement.addEventListener(
+                    "webglcontextlost",
+                    () => {
+                      setMapOnly(true);
+                      setCanRender(false);
+                    },
+                    {
+                      once: true,
+                    },
+                  );
+                }}
+              >
+                {/* Presentation fill reveals the supplied lunar texture; sensor illumination remains unchanged. */}
+                <ambientLight intensity={0.7} />
+                <hemisphereLight args={["#e8edf4", "#5b5960", 0.8]} />
+                <Sun data={data} />
+                <Terrain data={data} />
+                <Rover data={data} />
+                <TraverseOverlay data={data} />
+                <DrillEffects data={data} />
+                <CameraRig
+                  data={data}
+                  mode={cameraMode}
+                  onInteract={() => setCameraMode("ORBIT")}
+                />
+              </Canvas>
+            </Suspense>
+          </SceneBoundary>
+        </div>
       )}
       <div className="pointer-events-none absolute left-3 top-3 font-mono text-[10px] uppercase tracking-[0.2em] text-label">
         ROVER 1 ·{" "}
