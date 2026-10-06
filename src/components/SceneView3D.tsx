@@ -560,7 +560,7 @@ export function SceneView3D() {
           : `${cameraMode === "RELIEF" ? "CRATER RELIEF" : cameraMode === "SURVEY" ? "TERRAIN OVERVIEW" : cameraMode === "ORBIT" ? "ORBIT FOLLOW" : "CHASE 35 M"} · DEM 20 M · VISUAL REGOLITH`}
       </div>
       {!mapOnly && (
-        <div className="absolute bottom-3 right-28 flex gap-2">
+        <div className="absolute bottom-14 right-3 flex max-w-[calc(100%-1.5rem)] flex-wrap justify-end gap-2">
           <button
             onClick={() => setCameraMode("RELIEF")}
             className="rounded border border-white/20 bg-card/95 px-3 py-2 font-mono text-[10px] text-telemetry"
