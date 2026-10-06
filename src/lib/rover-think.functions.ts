@@ -95,7 +95,7 @@ export const roverThink = createServerFn({ method: "POST" })
     return { ...d, history: (d.history ?? []).slice(-8) };
   })
   .handler(async ({ data }): Promise<ThinkResult> => {
-    const apiKey = process.env.LOVABLE_API_KEY;
+    const apiKey = process.env['LOVABLE_API_KEY'];
     if (!apiKey) return { ok: false, status: 401, message: "Uplink not configured." };
 
     const res = await fetch(GATEWAY, {
