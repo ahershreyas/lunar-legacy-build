@@ -102,10 +102,10 @@ function buildRelief(t: TerrainData): HTMLCanvasElement {
   for (let r = 0; r < N; r++) {
     for (let q = 0; q < N; q++) {
       const i = r * N + q;
-      const l = e[r * N + Math.max(q - 1, 0)];
-      const rt = e[r * N + Math.min(q + 1, N - 1)];
-      const u = e[Math.max(r - 1, 0) * N + q];
-      const d = e[Math.min(r + 1, N - 1) * N + q];
+      const l = e[r * N + Math.max(q - 1, 0)] ?? 0;
+      const rt = e[r * N + Math.min(q + 1, N - 1)] ?? 0;
+      const u = e[Math.max(r - 1, 0) * N + q] ?? 0;
+      const d = e[Math.min(r + 1, N - 1) * N + q] ?? 0;
       const dzdx = (rt - l) / (2 * METRES_PER_SAMPLE);
       const dzdy = (d - u) / (2 * METRES_PER_SAMPLE);
       const slope = Math.atan(Math.hypot(dzdx, dzdy));
