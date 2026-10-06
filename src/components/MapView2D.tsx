@@ -1,7 +1,13 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import { Minus, Plus } from "lucide-react";
+import { Button } from "./ui/button";
 import { useMissionStore } from "../store/useMissionStore";
 import { GRID_SIZE, METRES_PER_SAMPLE } from "../utils/coords";
 import type { TerrainData } from "../sim/terrain";
+
+const DEFAULT_ZOOM = 4;
+const MIN_ZOOM = 1;
+const MAX_ZOOM = 16;
 
 /**
  * Shaded-relief map of the full 20.48 km grid, rendered from terrain.bin.
@@ -10,7 +16,15 @@ import type { TerrainData } from "../sim/terrain";
 export function MapView2D() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const reliefRef = useRef<HTMLCanvasElement | null>(null);
+  const zoomRef = useRef(DEFAULT_ZOOM);
+  const [zoom, setZoom] = useState(DEFAULT_ZOOM);
   const terrain = useMissionStore((s) => s.terrain);
+
+  const updateZoom = (next: number) => {
+    const clamped = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, next));
+    zoomRef.current = clamped;
+    setZoom(clamped);
+  };
 
   // Build the shaded relief once per terrain load (offscreen, 1024^2).
   useEffect(() => {
@@ -43,8 +57,15 @@ export function MapView2D() {
       ctx.fillRect(0, 0, w, h);
       const side = Math.min(w, h);
       const ox = (w - side) / 2, oy = (h - side) / 2;
-      ctx.drawImage(relief, ox, oy, side, side);
-      const toPx = (c: number, r: number) => ({ x: ox + (c / GRID_SIZE) * side, y: oy + (r / GRID_SIZE) * side });
+      const scale = (side / GRID_SIZE) * zoomRef.current;
+      const mapX = ox + side / 2 - disp.col * scale;
+      const mapY = oy + side / 2 - disp.row * scale;
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(ox, oy, side, side);
+      ctx.clip();
+      ctx.drawImage(relief, mapX, mapY, GRID_SIZE * scale, GRID_SIZE * scale);
+      const toPx = (c: number, r: number) => ({ x: mapX + c * scale, y: mapY + r * scale });
 
       const line = (pts: { col: number; row: number }[], color: string, dash: number[]) => {
         if (pts.length < 2) return;
@@ -74,20 +95,49 @@ export function MapView2D() {
         ctx.strokeRect(p.x - 3 * dpr, p.y - 3 * dpr, 6 * dpr, 6 * dpr);
       }
       const p = toPx(disp.col, disp.row);
+      ctx.strokeStyle = "rgba(6, 182, 212, 0.5)";
+      ctx.lineWidth = dpr;
+      ctx.beginPath(); ctx.arc(p.x, p.y, 9 * dpr, 0, Math.PI * 2); ctx.stroke();
       ctx.beginPath(); ctx.arc(p.x, p.y, 5 * dpr, 0, Math.PI * 2);
-      ctx.fillStyle = "rgba(6, 182, 212, 0.25)"; ctx.fill();
-      ctx.beginPath(); ctx.arc(p.x, p.y, 2.5 * dpr, 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(6, 182, 212, 0.32)"; ctx.fill();
+      ctx.beginPath(); ctx.arc(p.x, p.y, 3 * dpr, 0, Math.PI * 2);
       ctx.fillStyle = "#06B6D4"; ctx.fill();
+      ctx.restore();
     };
     raf = requestAnimationFrame(frame);
     return () => cancelAnimationFrame(raf);
   }, [terrain]);
 
   return (
-    <div className="relative h-full w-full overflow-hidden rounded-md border border-white/10 bg-canvas">
+    <div className="relative h-full w-full overflow-hidden rounded-md border border-border bg-canvas">
       <canvas ref={canvasRef} className="h-full w-full" />
       <div className="pointer-events-none absolute left-3 top-3 font-mono text-[10px] uppercase tracking-[0.2em] text-label">
-        Orbital Survey — 20,480 m · {METRES_PER_SAMPLE} m/px
+        Rover Survey — {Math.round((GRID_SIZE * METRES_PER_SAMPLE) / zoom).toLocaleString()} m across · {zoom}×
+      </div>
+      <div className="absolute bottom-3 right-3 flex flex-col gap-1 rounded-md border border-border bg-card/90 p-1 shadow-lg backdrop-blur-sm">
+        <Button
+          aria-label="Zoom in on rover"
+          title="Zoom in on rover"
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8 text-telemetry hover:bg-well hover:text-telemetry"
+          disabled={zoom >= MAX_ZOOM}
+          onClick={() => updateZoom(zoom * 2)}
+        >
+          <Plus aria-hidden="true" />
+        </Button>
+        <div className="h-px bg-border" />
+        <Button
+          aria-label="Zoom out from rover"
+          title="Zoom out from rover"
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8 text-telemetry hover:bg-well hover:text-telemetry"
+          disabled={zoom <= MIN_ZOOM}
+          onClick={() => updateZoom(zoom / 2)}
+        >
+          <Minus aria-hidden="true" />
+        </Button>
       </div>
     </div>
   );
