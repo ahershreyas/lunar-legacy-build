@@ -38,7 +38,7 @@ export async function loadTerrain(): Promise<TerrainData> {
   let minElev = Infinity;
   let maxElev = -Infinity;
   for (let i = 0; i < elevation.length; i++) {
-    const v = elevation[i];
+    const v = elevation[i] ?? 0;
     if (v < minElev) minElev = v;
     if (v > maxElev) maxElev = v;
   }
