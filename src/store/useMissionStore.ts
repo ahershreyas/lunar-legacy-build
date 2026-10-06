@@ -19,7 +19,7 @@ export interface LogEntry {
   t: number; // MET seconds
   who: "ROVER 1" | "CONTROL" | "COMMANDER" | "SYSTEM";
   text: string;
-  tone?: "nominal" | "hazard" | "abort";
+  tone?: "nominal" | "hazard" | "abort" | undefined;
 }
 
 export interface Sample {
