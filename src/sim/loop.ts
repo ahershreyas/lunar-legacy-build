@@ -293,8 +293,12 @@ async function sortie(t: TerrainData, signal: AbortSignal, goal: string) {
     setRoute(legs);
     const q = quoteLegs(t, legs);
     const s = S();
-    const end = routePoints(s.col, s.row, legs).at(-1)!;
-    const lastName = (legs.at(-1)?.purpose ?? "").match(/Station\s+(\w+)/i)?.[1] ?? NATO[legs.length - 1] ?? "Final";
+    // Target = the station farthest from the rover (a loop ends at home, so not the last one).
+    const pts = routePoints(s.col, s.row, legs).slice(1);
+    let ti = 0;
+    pts.forEach((p, i) => { if (gridDistanceM(s.col, s.row, p.col, p.row) > gridDistanceM(s.col, s.row, pts[ti]!.col, pts[ti]!.row)) ti = i; });
+    const end = pts[ti]!;
+    const lastName = (legs[ti]?.purpose ?? "").match(/Station\s+(\w+)/i)?.[1] ?? NATO[ti] ?? "Final";
     set({
       status: "AWAITING_APPROVAL",
       quote: {
