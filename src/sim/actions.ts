@@ -17,6 +17,8 @@ export interface MoveResult {
   travelled: number;
   batteryCost: number;
   lipHalt: { dropM: number } | null;
+  boundaryHit: boolean;
+  peakSlope: number;
 }
 
 /** Drive along bearing for metres. A physical >0.8 m drop in one metre is a lip: motion stops there. */
@@ -27,20 +29,24 @@ export function applyMove(t: TerrainData, col: number, row: number, bearing: num
   let cost = 0;
   let travelled = 0;
   let lipHalt: MoveResult["lipHalt"] = null;
+  let boundaryHit = false;
+  let peakSlope = 0;
   let end = { col, row };
   for (let m = 1; m <= dist; m++) {
     const p = offset(col, row, bearing, m);
-    if (p.col < 1 || p.row < 1 || p.col > GRID_SIZE - 2 || p.row > GRID_SIZE - 2) break; // map edge
+    if (p.col < 0 || p.row < 0 || p.col > GRID_SIZE - 1 || p.row > GRID_SIZE - 1) { boundaryHit = true; break; } // clip at grid edge
     const h = heightAt(t, p.col, p.row);
     if (prevH - h > 0.8) { lipHalt = { dropM: Math.round((prevH - h) * 10) / 10 }; break; }
-    cost += (DRAIN_PER_100M / 100) * (1 + slopeAt(t, p.col, p.row) / 15);
+    const sl = slopeAt(t, p.col, p.row);
+    peakSlope = Math.max(peakSlope, sl);
+    cost += (DRAIN_PER_100M / 100) * (1 + sl / 15);
     prevH = h;
     travelled = m;
     end = p;
     if (m % 20 === 0) path.push(p);
   }
   path.push(end);
-  return { path, end, travelled, batteryCost: cost, lipHalt };
+  return { path, end, travelled, batteryCost: cost, lipHalt, boundaryHit, peakSlope };
 }
 
 export function applyDrill(t: TerrainData, col: number, row: number): { reading: MineralReading; batteryCost: number } {
