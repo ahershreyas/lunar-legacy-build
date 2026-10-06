@@ -294,7 +294,7 @@ async function sortie(t: TerrainData, signal: AbortSignal, goal: string) {
     const q = quoteLegs(t, legs);
     const s = S();
     const end = routePoints(s.col, s.row, legs).at(-1)!;
-    const lastName = legs.at(-1)?.purpose.match(/Station\s+(\w+)/i)?.[1] ?? NATO[legs.length - 1] ?? "Final";
+    const lastName = (legs.at(-1)?.purpose ?? "").match(/Station\s+(\w+)/i)?.[1] ?? NATO[legs.length - 1] ?? "Final";
     set({
       status: "AWAITING_APPROVAL",
       quote: {
