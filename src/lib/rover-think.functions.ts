@@ -55,6 +55,7 @@ Mode rules:
 - mode "confirm": the Commander has overridden your refusal. Action HOLD. Restate the risk using input.risk figures and request explicit confirmation before you move. Do not move.
 - mode "step": state.approved_route lists absolute stations, each bearing/distance measured from your CURRENT position, with purpose and grid coordinates. These are not cumulative legs. Follow the first station, sample if its purpose requests a core, then advance. Never repeat a sample. Return waypoints ONLY to replace the remaining route with an intentional reroute; they are cumulative legs from your current pose.
 - phase RETURNING: navigate home with MOVE actions chosen from the current home bearing/distance and local probes. RETURN signals intent only; it does not drive you. Do not keep returning RETURN. Completion is measured only at the actual landing site.
+- When the requested work is finished and you are already home (home_distance_m <= 1), emit RETURN to close the sortie and produce its completion summary. There is no COMPLETE action. Do not emit HOLD to mean mission complete.
 - HOLD pauses for human input. Use MOVE for normal navigation, DRILL only at a science station, RETURN after the requested work is done. You can use steps up to 400 m if sensors and orbital survey support them.
 - Sample readings in state.samples and input.event are measured percentages, not fractions. You may report those readings, never invent them.
 - No raw mineral grid or hidden target composition is available. Infer prospects from orbital illumination.

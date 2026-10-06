@@ -101,6 +101,7 @@ export function emergencyHold() {
   silence();
   idleCtrl?.abort();
   idleCtrl = null;
+  if (S().groundLink === "THINKING") set({ groundLink: "STANDBY" });
   if (!ctrl) return;
   ctrl.abort();
   ctrl = null;
@@ -764,6 +765,7 @@ export async function runMission(goal: string) {
   }
   idleCtrl?.abort();
   idleCtrl = null;
+  if (S().groundLink === "THINKING") set({ groundLink: "STANDBY" });
   ctrl = new AbortController();
   const signal = ctrl.signal;
   returning = false;
