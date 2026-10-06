@@ -117,8 +117,8 @@ function buildRelief(t: TerrainData): HTMLCanvasElement {
 
       const h = (e[i] - t.minElev) / range;
       // Dark regolith base, lifted by elevation, modulated by hillshade.
-      const base = 14 + h * 60;
-      const v = Math.round(base * (0.35 + 0.65 * shade));
+      const base = 26 + h * 90;
+      const v = Math.round(base * (0.45 + 0.55 * shade));
       const o = i * 4;
       img.data[o] = v;
       img.data[o + 1] = v + 2;
