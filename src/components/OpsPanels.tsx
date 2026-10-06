@@ -118,10 +118,10 @@ export function PushToTalk({ disabled }: { disabled: boolean }) {
 
 /* ---------- DATA SOURCES ---------- */
 const SOURCES = [
-  { file: "terrain.bin", inst: "CNSA/CLEP Chang'e-2 CCD stereo DEM (via NASA Moon Trek)", res: "1024 × 1024 Float32 · 20 m/sample · 20.48 km square", proc: "Polar-stereographic crop of the south pole; elevation destriped to remove along-track banding; metres relative to the lowest cell." },
-  { file: "illumination.bin", inst: "Derived from the DEM above", res: "1024 × 1024 Float32 · 20 m/sample · 0–1", proc: "Computed by ray-casting the horizon in 24 directions for each cell and integrating the Sun's elevation track; permanently shadowed cells read near 0." },
-  { file: "minerals.bin", inst: "Modelled — not an instrument product", res: "3 × 1024 × 1024 Float32 · 20 m/sample", proc: "Ilmenite, plagioclase and water-ice fractions modelled from the illumination map and local terrain, not measured: no polar mineral map exists at 20 m." },
-  { file: "texture.jpg", inst: "NASA/GSFC/Arizona State University LROC (via NASA Moon Trek, JPL-Caltech)", res: "Orthoimage co-registered to the DEM grid", proc: "Reprojected and cropped to the same polar-stereographic frame as terrain.bin." },
+  { file: "terrain.bin", inst: "CNSA/CLEP Chang'e-2 CCD stereo DEM (via NASA Moon Trek)", res: "1024 × 1024 Float32 · 20 m/sample · 20.48 km square", proc: "Lunar south polar stereographic projection, 88.65° S to 89.54° S. Elevation destriped to remove along-track banding." },
+  { file: "illumination.bin", inst: "Derived from the DEM above", res: "1024 × 1024 Float32 · 20 m/sample · fraction of lunar day lit (0–1)", proc: "Computed from the DEM by ray-casting the horizon in 24 directions for each cell; permanently shadowed cells read near 0." },
+  { file: "minerals.bin", inst: "Modelled — not an instrument product", res: "3 × 1024 × 1024 Float32 · 20 m/sample · percent", proc: "Ilmenite, plagioclase and water-ice composition modelled from the illumination map, not measured — no polar mineral map exists at 20 m." },
+  { file: "texture.jpg", inst: "NASA/GSFC/Arizona State University LROC (via NASA Moon Trek, JPL-Caltech)", res: "2048 × 2048 albedo · 10 m/pixel", proc: "Pixel-aligned to the terrain grid in the same polar stereographic frame." },
 ];
 
 export function DataSources({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {

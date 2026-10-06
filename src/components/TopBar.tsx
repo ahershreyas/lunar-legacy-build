@@ -1,4 +1,5 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import { DataSources } from "./OpsPanels";
 import { Radio, Volume2, VolumeX } from "lucide-react";
 import { unlockAudio, silence } from "../utils/radioVoice";
 import { useMissionStore } from "../store/useMissionStore";
@@ -10,6 +11,7 @@ export function TopBar() {
   const met = useMissionStore((s) => s.met);
   const tick = useMissionStore((s) => s.tick);
   const comms = useMissionStore((s) => s.commsMode);
+  const [sources, setSources] = useState(false);
   const toggleComms = () => {
     const next = comms === "TEXT" ? "VOICE" : "TEXT";
     if (next === "VOICE") unlockAudio();
@@ -47,6 +49,7 @@ export function TopBar() {
           <span className="text-telemetry">{formatMET(met)}</span>
         </span>
         <span className="text-label">
+          <span className="font-sans text-[10px] uppercase tracking-wider">Selenographic Position </span>
           <span className="text-telemetry">
             {latSouth.toFixed(4)}° S&nbsp;&nbsp;{lonEast.toFixed(3)}° E
           </span>
@@ -64,8 +67,12 @@ export function TopBar() {
           COMMS {comms === "VOICE" ? "TEXT + VOICE" : "TEXT ONLY"}
         </button>
         <span className="rounded border border-white/10 bg-well px-2 py-0.5 text-label">
-          TIME ×60
+          TIME ×120
         </span>
+        <button onClick={() => setSources(true)} className="rounded border border-white/10 bg-well px-2 py-0.5 text-label hover:text-telemetry">
+          DATA SOURCES
+        </button>
+        <DataSources open={sources} onOpenChange={setSources} />
       </div>
     </header>
   );

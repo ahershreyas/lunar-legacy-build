@@ -320,7 +320,7 @@ async function sortie(t: TerrainData, signal: AbortSignal, goal: string) {
     const c = await awaitChoice({ kind: "approve" }, signal);
     set({ quote: null });
     if (c === "reject") {
-      S().appendLog("COMMANDER", `REJECT — ${note || "plan not approved"}.`, "hazard");
+      S().appendLog("COMMANDER", `DECLINE PLAN — ${note || "plan not approved"}.`, "hazard");
       set({ status: "IDLE", running: false, plannedPath: [] });
       return;
     }

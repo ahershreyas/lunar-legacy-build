@@ -53,7 +53,7 @@ export function CommsLog() {
                       : "text-label"
               }`}
             >
-              {e.who}
+              {e.who === "CONTROL" ? "MISSION CONTROL" : e.who}
             </span>{" "}
             <span className={e.tone === "abort" ? "text-abort" : e.tone === "hazard" ? "text-hazard" : ""}>{e.text}</span>
           </div>

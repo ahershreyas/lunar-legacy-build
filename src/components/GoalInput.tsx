@@ -1,6 +1,7 @@
 import { SendHorizontal, OctagonX } from "lucide-react";
 import { useMissionStore } from "../store/useMissionStore";
 import { runMission, emergencyHold } from "../sim/loop";
+import { PushToTalk } from "./OpsPanels";
 
 const PRESETS = [
   { label: "Ice core", goal: "Survey the nearest permanently shadowed cold trap, drill one core for water ice, then return to base." },
@@ -50,12 +51,13 @@ export function GoalInput() {
           placeholder="State a mission goal in plain English…"
           className="h-9 flex-1 rounded border border-white/10 bg-well px-3 font-mono text-xs text-log placeholder:text-label/60 focus:border-telemetry/50 focus:outline-none"
         />
+        <PushToTalk disabled={running} />
         <button
           onClick={() => transmit()}
           disabled={running}
           className="flex h-9 items-center gap-2 rounded border border-telemetry/40 bg-telemetry/10 px-4 font-mono text-[11px] uppercase tracking-widest text-telemetry transition-colors hover:bg-telemetry/20 disabled:opacity-40"
         >
-          Transmit ⟶ 1.28 s
+          Transmit → 1.28 s
           <SendHorizontal size={12} />
         </button>
         <button

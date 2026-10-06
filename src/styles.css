@@ -71,6 +71,7 @@
   --color-path: var(--path);
   --color-hazard: var(--hazard);
   --color-abort: var(--abort);
+  --color-attribution: var(--attribution);
 }
 
 :root {
@@ -120,6 +121,7 @@
   --path: oklch(0.715 0.143 215); /* #06B6D4 */
   --hazard: oklch(0.769 0.188 70.1); /* #F59E0B */
   --abort: oklch(0.637 0.237 25.3); /* #EF4444 */
+  --attribution: oklch(0.554 0.041 257.4); /* #64748B */
 }
 
 .dark {

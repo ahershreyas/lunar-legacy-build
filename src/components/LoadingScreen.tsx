@@ -1,9 +1,12 @@
 import { useEffect, useState } from "react";
+import { useMissionStore } from "../store/useMissionStore";
 
 const PHASES = ["", "ESTABLISHING UPLINK…", "AOS — ROVER 1 NOMINAL"] as const;
 
 export function LoadingScreen({ done }: { done: boolean }) {
   const [phase, setPhase] = useState(0);
+  const load = useMissionStore((s) => s.load);
+  const frac = load.total ? Math.min(1, load.loaded / load.total) : 0;
 
   useEffect(() => {
     const t1 = setTimeout(() => setPhase(1), 500);
@@ -28,7 +31,13 @@ export function LoadingScreen({ done }: { done: boolean }) {
         Lunar Surface Operations
       </p>
       <p className="mt-10 h-4 font-mono text-xs tabular-nums text-telemetry">
-        {PHASES[phase]}
+        {done && phase === 2 ? PHASES[2] : phase === 0 ? "" : PHASES[1]}
+      </p>
+      <div className="mt-3 h-1 w-64 overflow-hidden rounded bg-well">
+        <div className="h-full bg-telemetry transition-[width] duration-200" style={{ width: `${(done ? 1 : frac) * 100}%` }} />
+      </div>
+      <p className="mt-2 font-mono text-[10px] tabular-nums text-label">
+        {(load.loaded / 1048576).toFixed(1)} / {load.total ? (load.total / 1048576).toFixed(1) : "—"} MB · TERRAIN · ILLUMINATION · MINERALS · TEXTURE
       </p>
     </div>
   );
