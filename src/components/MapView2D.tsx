@@ -13,11 +13,12 @@ const MAX_ZOOM = 16;
  * Shaded-relief map of the full 20.48 km grid, rendered from terrain.bin.
  * Rover is a cyan dot with a fading trail. (SPEC §5: the full map lives here.)
  */
-export function MapView2D() {
+export function MapView2D({ overview = false }: { overview?: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const reliefRef = useRef<HTMLCanvasElement | null>(null);
-  const zoomRef = useRef(DEFAULT_ZOOM);
-  const [zoom, setZoom] = useState(DEFAULT_ZOOM);
+  const initialZoom = overview ? MIN_ZOOM : DEFAULT_ZOOM;
+  const zoomRef = useRef(initialZoom);
+  const [zoom, setZoom] = useState(initialZoom);
   const terrain = useMissionStore((s) => s.terrain);
 
   const updateZoom = (next: number) => {
@@ -57,9 +58,9 @@ export function MapView2D() {
       ctx.fillRect(0, 0, w, h);
       const side = Math.min(w, h);
       const ox = (w - side) / 2, oy = (h - side) / 2;
-      const scale = (side / GRID_SIZE) * zoomRef.current;
-      const mapX = ox + side / 2 - disp.col * scale;
-      const mapY = oy + side / 2 - disp.row * scale;
+       const scale = (side / GRID_SIZE) * zoomRef.current;
+       const mapX = overview ? ox : ox + side / 2 - disp.col * scale;
+       const mapY = overview ? oy : oy + side / 2 - disp.row * scale;
       ctx.save();
       ctx.beginPath();
       ctx.rect(ox, oy, side, side);
@@ -106,15 +107,15 @@ export function MapView2D() {
     };
     raf = requestAnimationFrame(frame);
     return () => cancelAnimationFrame(raf);
-  }, [terrain]);
+  }, [terrain, overview]);
 
   return (
     <div className="relative h-full w-full overflow-hidden rounded-md border border-border bg-canvas">
       <canvas ref={canvasRef} className="h-full w-full" />
       <div className="pointer-events-none absolute left-3 top-3 font-mono text-[10px] uppercase tracking-[0.2em] text-label">
-        Rover Survey — {Math.round((GRID_SIZE * METRES_PER_SAMPLE) / zoom).toLocaleString()} m across · {zoom}×
+        {overview ? "Surface Overview" : "Rover Survey"} — {Math.round((GRID_SIZE * METRES_PER_SAMPLE) / zoom).toLocaleString()} m across · {zoom}×
       </div>
-      <div className="absolute bottom-3 right-3 flex flex-col gap-1 rounded-md border border-border bg-card/90 p-1 shadow-lg backdrop-blur-sm">
+      {!overview && <div className="absolute bottom-3 right-3 flex flex-col gap-1 rounded-md border border-border bg-card/90 p-1 shadow-lg backdrop-blur-sm">
         <Button
           aria-label="Zoom in on rover"
           title="Zoom in on rover"
@@ -138,7 +139,7 @@ export function MapView2D() {
         >
           <Minus aria-hidden="true" />
         </Button>
-      </div>
+      </div>}
     </div>
   );
 }
