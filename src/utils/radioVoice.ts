@@ -1,3 +1,4 @@
+import { radioSpeech } from "../lib/rover-think.functions";
 const voiceChoice: Record<string, string> = {};
 export function setRadioVoice(role: "CONTROL" | "ROVER 1", voiceURI: string) {
   voiceChoice[role] = voiceURI;
@@ -20,6 +21,7 @@ let ctx: AudioContext | null = null;
 let queue: Promise<void> = Promise.resolve();
 let generation = 0;
 let stopActive: (() => void) | null = null;
+let activeAudio: HTMLAudioElement | null = null;
 let finishActive: (() => void) | null = null;
 function ac() {
   ctx ??= new AudioContext();
@@ -61,7 +63,7 @@ function noiseBed() {
   filter.type = "bandpass";
   filter.frequency.value = 1850;
   filter.Q.value = 2.2;
-  gain.gain.value = 0.015;
+  gain.gain.value = 0.004;
   source.connect(filter).connect(gain).connect(c.destination);
   source.start();
   let stopped = false;
@@ -128,12 +130,7 @@ async function utter(who: string, text: string) {
   });
 }
 export function speak(who: string, text: string) {
-  if (
-    typeof window === "undefined" ||
-    !("speechSynthesis" in window) ||
-    !("AudioContext" in window)
-  )
-    return;
+  if (typeof window === "undefined" || !("AudioContext" in window)) return;
   const epoch = generation;
   queue = queue
     .then(async () => {
@@ -143,7 +140,42 @@ export function speak(who: string, text: string) {
       try {
         await quindar(2525);
         if (epoch !== generation) return;
-        await utter(who, text);
+        status(`${who === "CONTROL" ? "MISSION CONTROL" : "ROVER 1"} GENERATING NEURAL VOICE`);
+        const result = await radioSpeech({
+          data: { role: who === "CONTROL" ? "CONTROL" : "ROVER 1", text },
+        }).catch(() => null);
+        if (epoch !== generation) return;
+        if (result?.ok) {
+          await new Promise<void>((resolve) => {
+            const audio = new Audio(`data:audio/mpeg;base64,${result.audio}`);
+            activeAudio = audio;
+            const finish = () => {
+              activeAudio = null;
+              finishActive = null;
+              status(
+                `${who === "CONTROL" ? "MISSION CONTROL" : "ROVER 1"} RADIO COMPLETE · Lovable ${result.voice}`,
+              );
+              resolve();
+            };
+            finishActive = finish;
+            audio.onplaying = () =>
+              status(
+                `${who === "CONTROL" ? "MISSION CONTROL" : "ROVER 1"} SPEAKING · Lovable ${result.voice}`,
+              );
+            audio.onended = finish;
+            audio.onerror = () => {
+              finish();
+              status("RADIO ERROR · neural audio playback failed");
+            };
+            void audio.play().catch(() => {
+              finish();
+              status("RADIO ERROR · click TEST BOTH RADIO VOICES to enable audio");
+            });
+          });
+        } else {
+          await utter(who, text);
+          status(`BROWSER FALLBACK · ${result?.message ?? "neural speech unavailable"}`);
+        }
         if (epoch !== generation) return;
         await quindar(2475);
       } finally {
@@ -155,6 +187,8 @@ export function speak(who: string, text: string) {
 }
 export function silence() {
   generation++;
+  activeAudio?.pause();
+  activeAudio = null;
   status("RADIO STANDBY");
   stopActive?.();
   stopActive = null;

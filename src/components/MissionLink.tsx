@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Radio } from "lucide-react";
 import { missionLinkStatus } from "../lib/rover-think.functions";
 import { useMissionStore } from "../store/useMissionStore";
@@ -13,6 +13,29 @@ export function MissionLink() {
   const rover = useMissionStore((s) => s.roverLink);
   const terrain = useMissionStore((s) => s.terrain);
   const [setup, setSetup] = useState(false);
+  useEffect(() => {
+    if (!terrain) return;
+    let cancelled = false;
+    void missionLinkStatus()
+      .then((config) => {
+        if (cancelled || useMissionStore.getState().link !== "OFFLINE") return;
+        useMissionStore.setState({
+          link: config.configured ? "READY" : "UNCONFIGURED",
+          aiProvider: config.provider,
+          groundLink: "STANDBY",
+          roverLink: "STANDBY",
+          linkMessage: config.configured
+            ? "Mission server connected. Enable radio, then transmit a goal to activate both agents."
+            : "No server AI credential. Initialize the link for setup instructions.",
+        });
+      })
+      .catch(() => {
+        /* The explicit initialize button remains available to retry. */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [terrain]);
   const initialize = async () => {
     // Called directly from a click: unlock browser audio before any network wait.
     unlockAudio();
@@ -96,9 +119,17 @@ export function MissionLink() {
             : "INITIALIZE MISSION LINK · ENABLE GPT + VOICE"}
         </button>
       ) : (
-        <button onClick={disconnect} className="font-mono text-[10px] text-label">
-          DISCONNECT LINK · {provider}
-        </button>
+        <div className="flex justify-between gap-2">
+          <button
+            onClick={() => void initialize()}
+            className="font-mono text-[10px] text-telemetry"
+          >
+            ENABLE GPT + NEURAL RADIO
+          </button>
+          <button onClick={disconnect} className="font-mono text-[10px] text-label">
+            DISCONNECT LINK · {provider}
+          </button>
+        </div>
       )}
       {(setup || link === "UNCONFIGURED" || link === "FAILED") && (
         <details open={setup} className="mt-2 text-[11px] leading-relaxed text-label">

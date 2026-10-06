@@ -86,6 +86,24 @@ function Rover({ data }: { data: TerrainData }) {
     });
     // Supplied GLB has metre-sized wheel/axle positions. 0.015 would hide it.
     const size = new THREE.Box3().setFromObject(m).getSize(new THREE.Vector3());
+    // Twelve tread ribs make rolling visible even on a symmetric wheel texture.
+    for (const name of ["FL", "FR", "ML", "MR", "RL", "RR"]) {
+      const wheel = m.getObjectByName(`Wheel_${name}`);
+      if (!wheel) continue;
+      for (let i = 0; i < 12; i++) {
+        const angle = (i * Math.PI) / 6;
+        const rib = new THREE.Mesh(
+          new THREE.BoxGeometry(0.62, 0.055, 0.09),
+          new THREE.MeshStandardMaterial({
+            color: i === 0 ? "#d0d5dc" : "#727981",
+            roughness: 0.9,
+          }),
+        );
+        rib.position.set(0, Math.cos(angle) * 0.53, Math.sin(angle) * 0.53);
+        rib.rotation.x = angle;
+        wheel.add(rib);
+      }
+    }
     const scale = size.z > 100 ? 0.015 : 1;
     m.scale.setScalar(scale);
     return m;
@@ -156,7 +174,7 @@ function Rover({ data }: { data: TerrainData }) {
       prev.current && delta > 0 && moving
         ? gridDistanceM(prev.current.col, prev.current.row, p.col, p.row) / delta
         : 0;
-    for (const wheel of wheels) if (wheel) wheel.rotation.x += (speed * delta) / 0.5;
+    for (const wheel of wheels) if (wheel) wheel.rotation.x -= (speed * delta) / 0.53;
     if (drill) drill.rotation.x += ((s.status === "DRILLING" ? 0.65 : 0) - drill.rotation.x) * k;
     prev.current = { ...p };
   });
@@ -330,7 +348,7 @@ function Sun({ data }: { data: TerrainData }) {
       <directionalLight
         ref={light}
         target={target}
-        intensity={4.5}
+        intensity={3}
         castShadow
         shadow-bias={-0.0005}
         shadow-normalBias={0.05}
@@ -398,12 +416,15 @@ export function SceneView3D() {
               camera={{ fov: 45, near: 0.1, far: 40000 }}
               onCreated={({ gl }) => {
                 gl.setClearColor("#08090c");
+                gl.toneMappingExposure = 1.25;
                 gl.domElement.addEventListener("webglcontextlost", () => setMapOnly(true), {
                   once: true,
                 });
               }}
             >
-              <ambientLight intensity={0.3} />
+              {/* Presentation fill reveals the supplied lunar texture; sensor illumination remains unchanged. */}
+              <ambientLight intensity={1.1} />
+              <hemisphereLight args={["#e8edf4", "#5b5960", 1.4]} />
               <Sun data={data} />
               <Terrain data={data} />
               <Rover data={data} />
@@ -437,7 +458,7 @@ export function SceneView3D() {
         </div>
       )}
       {!mapOnly && (
-        <div className="pointer-events-none absolute right-3 top-3 font-mono text-[10px] text-label">
+        <div className="pointer-events-none absolute right-3 top-8 font-mono text-[10px] text-label">
           DRAG TO ROTATE · SCROLL TO ZOOM · GREEN: TRAVELLED · GOLD: CORE
         </div>
       )}

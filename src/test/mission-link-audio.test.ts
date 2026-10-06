@@ -3,6 +3,8 @@ import { aiProvider } from "../lib/ai-provider";
 import { useMissionStore } from "../store/useMissionStore";
 import { silence, speak, unlockAudio } from "../utils/radioVoice";
 
+const neural = vi.hoisted(() => vi.fn());
+vi.mock("../lib/rover-think.functions", () => ({ radioSpeech: neural }));
 const calls: { text: string; rate: number; pitch: number; voice?: { voiceURI: string } }[] = [];
 const frequencies: number[] = [];
 class Node {
@@ -59,6 +61,7 @@ class Utterance {
 }
 beforeEach(() => {
   silence();
+  neural.mockReset().mockResolvedValue({ ok: false, message: "Test fallback" });
   vi.useFakeTimers();
   calls.length = 0;
   frequencies.length = 0;
@@ -105,6 +108,33 @@ describe("Step 5 radio", () => {
     expect(calls.every((u) => u.rate === 0.9)).toBe(true);
     expect(calls.map((u) => u.pitch)).toEqual([0.94, 0.94]);
     expect(frequencies).toEqual([2525, 2475, 2525, 2475]);
+  });
+  it("plays neural speech for both roles before using any browser fallback", async () => {
+    const played: string[] = [];
+    class Clip {
+      onplaying?: () => void;
+      onended?: () => void;
+      constructor(public src: string) {}
+      pause() {}
+      play() {
+        played.push(this.src);
+        this.onplaying?.();
+        Promise.resolve().then(() => this.onended?.());
+        return Promise.resolve();
+      }
+    }
+    vi.stubGlobal("Audio", Clip);
+    neural.mockImplementation(async ({ data }) => ({
+      ok: true,
+      audio: "fixture",
+      voice: data.role === "CONTROL" ? "Onyx" : "Nova",
+    }));
+    speak("CONTROL", "Uplink");
+    speak("ROVER 1", "Downlink");
+    await vi.runAllTimersAsync();
+    expect(neural.mock.calls.map(([x]) => x.data.role)).toEqual(["CONTROL", "ROVER 1"]);
+    expect(played).toHaveLength(2);
+    expect(calls).toHaveLength(0);
   });
   it("cancels queued radio messages when the link is silenced", async () => {
     speak("CONTROL", "Pending uplink");

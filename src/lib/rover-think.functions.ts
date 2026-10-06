@@ -324,3 +324,43 @@ export const roverThink = createServerFn({ method: "POST" })
       return { ok: false, status: 500, message: "Garbled downlink — no decision decoded." };
     }
   });
+
+/** Neural radio audio through the same server-only provider. Never expose its key. */
+export const radioSpeech = createServerFn({ method: "POST" })
+  .inputValidator((d: { role: "CONTROL" | "ROVER 1"; text: string }) => {
+    if (
+      !d ||
+      !["CONTROL", "ROVER 1"].includes(d.role) ||
+      typeof d.text !== "string" ||
+      d.text.length > 600
+    )
+      throw new Error("Invalid radio text");
+    return d;
+  })
+  .handler(async ({ data }) => {
+    const provider = aiProvider();
+    if (!provider.key) return { ok: false as const, message: "Neural radio is not configured" };
+    const res = await fetch(provider.url.replace(/responses$/, "audio/speech"), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${provider.key}`,
+        ...(provider.provider === "Lovable"
+          ? { "Lovable-API-Key": provider.key, "X-Lovable-AIG-SDK": "fetch" }
+          : {}),
+      },
+      signal: AbortSignal.timeout(30000),
+      body: JSON.stringify({
+        model: provider.provider === "Lovable" ? "openai/gpt-4o-mini-tts" : "gpt-4o-mini-tts",
+        voice: data.role === "CONTROL" ? "onyx" : "nova",
+        input: data.text,
+        response_format: "mp3",
+        speed: 1,
+        instructions:
+          "Speak as a calm, real human mission operator over a clear radio. Natural conversational cadence, warm and composed. No robotic monotone, no exaggerated announcer voice. Callsigns and numbers clear; brief natural pauses.",
+      }),
+    });
+    if (!res.ok) return { ok: false as const, message: `Neural radio unavailable (${res.status})` };
+    const audio = Buffer.from(await res.arrayBuffer()).toString("base64");
+    return { ok: true as const, audio, voice: data.role === "CONTROL" ? "Onyx" : "Nova" };
+  });
