@@ -11,9 +11,6 @@ export function MapView2D() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const reliefRef = useRef<HTMLCanvasElement | null>(null);
   const terrain = useMissionStore((s) => s.terrain);
-  const col = useMissionStore((s) => s.col);
-  const row = useMissionStore((s) => s.row);
-  const trail = useMissionStore((s) => s.trail);
 
   // Build the shaded relief once per terrain load (offscreen, 1024^2).
   useEffect(() => {
@@ -21,62 +18,70 @@ export function MapView2D() {
     reliefRef.current = buildRelief(terrain);
   }, [terrain]);
 
-  // Draw loop: blit relief, overlay trail + rover.
+  // Draw loop: rAF so the rover glides between 4 Hz store updates.
   useEffect(() => {
-    const canvas = canvasRef.current;
-    const relief = reliefRef.current;
-    if (!canvas || !relief) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
+    if (!terrain) return;
+    let raf = 0;
+    let disp: { col: number; row: number } | null = null;
+    const frame = () => {
+      raf = requestAnimationFrame(frame);
+      const canvas = canvasRef.current;
+      const relief = reliefRef.current;
+      if (!canvas || !relief) return;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+      const st = useMissionStore.getState();
+      disp = disp ?? { col: st.col, row: st.row };
+      disp.col += (st.col - disp.col) * 0.12;
+      disp.row += (st.row - disp.row) * 0.12;
 
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    const rect = canvas.getBoundingClientRect();
-    canvas.width = Math.round(rect.width * dpr);
-    canvas.height = Math.round(rect.height * dpr);
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const rect = canvas.getBoundingClientRect();
+      const w = Math.round(rect.width * dpr), h = Math.round(rect.height * dpr);
+      if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+      ctx.fillStyle = "#08090C";
+      ctx.fillRect(0, 0, w, h);
+      const side = Math.min(w, h);
+      const ox = (w - side) / 2, oy = (h - side) / 2;
+      ctx.drawImage(relief, ox, oy, side, side);
+      const toPx = (c: number, r: number) => ({ x: ox + (c / GRID_SIZE) * side, y: oy + (r / GRID_SIZE) * side });
 
-    ctx.fillStyle = "#08090C";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    // Fit the square relief into the canvas, centred.
-    const side = Math.min(canvas.width, canvas.height);
-    const ox = (canvas.width - side) / 2;
-    const oy = (canvas.height - side) / 2;
-    ctx.imageSmoothingEnabled = true;
-    ctx.drawImage(relief, ox, oy, side, side);
-
-    const toPx = (c: number, r: number) => ({
-      x: ox + (c / GRID_SIZE) * side,
-      y: oy + (r / GRID_SIZE) * side,
-    });
-
-    // Fading trail
-    if (trail.length > 1) {
-      for (let i = 1; i < trail.length; i++) {
-        const a = i / trail.length;
-        const tp0 = trail[i - 1]!;
-        const tp1 = trail[i]!;
-        const p0 = toPx(tp0.col, tp0.row);
-        const p1 = toPx(tp1.col, tp1.row);
-        ctx.strokeStyle = `rgba(6, 182, 212, ${0.15 + a * 0.6})`;
+      const line = (pts: { col: number; row: number }[], color: string, dash: number[]) => {
+        if (pts.length < 2) return;
+        ctx.setLineDash(dash.map((d) => d * dpr));
+        ctx.strokeStyle = color;
         ctx.lineWidth = 1.5 * dpr;
         ctx.beginPath();
-        ctx.moveTo(p0.x, p0.y);
-        ctx.lineTo(p1.x, p1.y);
+        pts.forEach((q, i) => { const p = toPx(q.col, q.row); i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y); });
         ctx.stroke();
-      }
-    }
+        ctx.setLineDash([]);
+      };
+      line(st.plannedPath, "rgba(56, 189, 248, 0.7)", [4, 4]);
+      if (st.detour) line(st.detour, "#F59E0B", [6, 3]);
 
-    // Rover dot
-    const p = toPx(col, row);
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, 5 * dpr, 0, Math.PI * 2);
-    ctx.fillStyle = "rgba(6, 182, 212, 0.25)";
-    ctx.fill();
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, 2.5 * dpr, 0, Math.PI * 2);
-    ctx.fillStyle = "#06B6D4";
-    ctx.fill();
-  }, [terrain, col, row, trail]);
+      const trail = st.trail;
+      for (let i = 1; i < trail.length; i++) {
+        const a = i / trail.length;
+        const p0 = toPx(trail[i - 1]!.col, trail[i - 1]!.row);
+        const p1 = toPx(trail[i]!.col, trail[i]!.row);
+        ctx.strokeStyle = `rgba(6, 182, 212, ${0.15 + a * 0.6})`;
+        ctx.lineWidth = 1.5 * dpr;
+        ctx.beginPath(); ctx.moveTo(p0.x, p0.y); ctx.lineTo(p1.x, p1.y); ctx.stroke();
+      }
+      for (const sm of st.samples) {
+        const p = toPx(sm.col, sm.row);
+        ctx.strokeStyle = "#10B981"; ctx.lineWidth = 1.5 * dpr;
+        ctx.strokeRect(p.x - 3 * dpr, p.y - 3 * dpr, 6 * dpr, 6 * dpr);
+      }
+      const p = toPx(disp.col, disp.row);
+      ctx.beginPath(); ctx.arc(p.x, p.y, 5 * dpr, 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(6, 182, 212, 0.25)"; ctx.fill();
+      ctx.beginPath(); ctx.arc(p.x, p.y, 2.5 * dpr, 0, Math.PI * 2);
+      ctx.fillStyle = "#06B6D4"; ctx.fill();
+    };
+    raf = requestAnimationFrame(frame);
+    return () => cancelAnimationFrame(raf);
+  }, [terrain]);
 
   return (
     <div className="relative h-full w-full overflow-hidden rounded-md border border-white/10 bg-canvas">

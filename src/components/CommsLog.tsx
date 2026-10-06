@@ -43,7 +43,7 @@ export function CommsLog() {
             >
               {e.who}
             </span>{" "}
-            <span>{e.text}</span>
+            <span className={e.tone === "abort" ? "text-abort" : e.tone === "hazard" ? "text-hazard" : ""}>{e.text}</span>
           </div>
         ))}
       </div>
