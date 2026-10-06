@@ -23,18 +23,39 @@ export interface MineralReading {
 const N = GRID_SIZE;
 const PLANE = N * N;
 
-async function fetchF32(url: string): Promise<Float32Array> {
+export type LoadProgress = (loaded: number, total: number) => void;
+
+/** Stream a file, reporting bytes as they arrive. */
+async function fetchBytes(url: string, onBytes: (n: number, total: number) => void): Promise<ArrayBuffer> {
   const res = await fetch(url);
-  if (!res.ok) throw new Error(`Failed to load ${url}: ${res.status}`);
-  return new Float32Array(await res.arrayBuffer());
+  if (!res.ok || !res.body) throw new Error(`${url} downlink ${res.status}`);
+  const total = Number(res.headers.get("content-length")) || 0;
+  onBytes(0, total);
+  const reader = res.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let got = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    got += value.length;
+    onBytes(got, Math.max(total, got));
+  }
+  const out = new Uint8Array(got);
+  let o = 0;
+  for (const c of chunks) { out.set(c, o); o += c.length; }
+  return out.buffer;
 }
 
-export async function loadTerrain(): Promise<TerrainData> {
-  const [elevation, illumination, minerals] = await Promise.all([
-    fetchF32("/terrain.bin"),
-    fetchF32("/illumination.bin"),
-    fetchF32(mineralsAsset.url),
-  ]);
+export async function loadTerrain(onProgress?: LoadProgress): Promise<TerrainData> {
+  const files = ["/terrain.bin", "/illumination.bin", mineralsAsset.url, "/texture.jpg"];
+  const loaded = files.map(() => 0);
+  const totals = files.map(() => 0);
+  const report = () => onProgress?.(loaded.reduce((a, b) => a + b, 0), totals.reduce((a, b) => a + b, 0));
+  const bufs = await Promise.all(files.map((f, i) => fetchBytes(f, (n, t) => { loaded[i] = n; totals[i] = t; report(); })));
+  const elevation = new Float32Array(bufs[0]!);
+  const illumination = new Float32Array(bufs[1]!);
+  const minerals = new Float32Array(bufs[2]!);
   let minElev = Infinity;
   let maxElev = -Infinity;
   for (let i = 0; i < elevation.length; i++) {

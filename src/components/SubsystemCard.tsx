@@ -11,6 +11,10 @@ export function SubsystemCard() {
 
   const slope = terrain ? slopeAt(terrain, col, row) : 0;
   const illum = terrain ? illuminationAt(terrain, col, row) : 0;
+  const health =
+    battery < 15 || slope > 22 ? "OFF-NOMINAL" : battery < 30 || slope > 18 || status === "HOLDING" ? "CAUTION" : "NOMINAL";
+  const healthTone = health === "NOMINAL" ? "text-nominal" : health === "CAUTION" ? "text-hazard" : "text-abort";
+  const stateLabel = status === "DRILLING" ? "ACQUIRE CORE SAMPLE" : status.replace("_", " ");
 
   return (
     <section className="rounded-md border border-white/10 bg-card p-3">
@@ -19,9 +23,7 @@ export function SubsystemCard() {
           <Activity size={12} className="text-telemetry" />
           Subsystem Status
         </h2>
-        <span className="font-mono text-[10px] uppercase tracking-widest text-nominal">
-          Nominal
-        </span>
+        <span className={`font-mono text-[10px] uppercase tracking-widest ${healthTone}`}>{health}</span>
       </header>
 
       <div className="space-y-3 font-mono text-xs tabular-nums">
@@ -41,7 +43,7 @@ export function SubsystemCard() {
         <div className="grid grid-cols-3 gap-2">
           <Readout label="Slope" value={`${slope.toFixed(1)}°`} warn={slope > 18} />
           <Readout label="Illum" value={`${Math.round(illum * 100)}%`} />
-          <Readout label="State" value={status} small />
+          <Readout label="State" value={stateLabel} small />
         </div>
       </div>
     </section>

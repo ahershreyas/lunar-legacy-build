@@ -10,6 +10,7 @@ import { CommsLog } from "../components/CommsLog";
 import { GoalInput } from "../components/GoalInput";
 import { LoadingScreen } from "../components/LoadingScreen";
 import { MissionCards, TransmissionBar, LiveProgress } from "../components/MissionCards";
+import { RiskPanel, Attribution } from "../components/OpsPanels";
 import { controlIdleProposal } from "../sim/loop";
 
 export const Route = createFileRoute("/")({
@@ -42,7 +43,7 @@ function Index() {
 
   useEffect(() => {
     let cancelled = false;
-    loadTerrain()
+    loadTerrain((loaded, total) => useMissionStore.setState({ load: { loaded, total } }))
       .then((t) => {
         if (cancelled) return;
         setTerrain(t);
@@ -68,7 +69,7 @@ function Index() {
           </div>
           {failed ? (
             <div className="flex h-full items-center justify-center rounded-md border border-white/10 bg-card font-mono text-xs text-abort">
-              LOS — terrain data failed to load: {failed}
+              LOS — TERRAIN DOWNLINK FAILED: {failed}
             </div>
           ) : (
             <MapView2D />
@@ -80,12 +81,14 @@ function Index() {
         >
           <SubsystemCard />
           <SpectrometryCard />
+          <RiskPanel />
           <LiveProgress />
           <TransmissionBar />
           <CommsLog />
         </div>
       </main>
       <GoalInput />
+      <Attribution />
     </div>
   );
 }

@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { useMissionStore } from "../store/useMissionStore";
 import { choose, type Choice } from "../sim/loop";
-import { formatDuration, formatEta } from "../sim/estimate";
+import { formatDuration, formatEta, NATO } from "../sim/estimate";
+import { SortieCompleteCard } from "./OpsPanels";
 import { RiskGauge } from "./RiskGauge";
 
 const pad3 = (n: number) => String(((Math.round(n) % 360) + 360) % 360).padStart(3, "0");
@@ -45,25 +46,33 @@ export function MissionCards() {
   const proposal = useMissionStore((s) => s.proposal);
   const running = useMissionStore((s) => s.running);
   const [reason, setReason] = useState("");
+  const sortieNo = useMissionStore((s) => s.sortieNo);
 
   if (pending?.kind === "approve" && quote) {
     return (
-      <Shell status="● Awaiting approval" tone="text-telemetry">
+      <Shell status={`● Proposed Sortie — SORTIE-${String(sortieNo).padStart(2, "0")}`} tone="text-telemetry">
         <Row k="Target" v={`${quote.target.name} · brg ${pad3(quote.target.bearing)} · ${quote.target.distance_m.toLocaleString()} m`} />
         <Row k="Strategy" v={quote.strategy} />
         <Row k="Duration" v={formatDuration(quote.etaSeconds)} />
         <Row k="Power req." v={`${quote.batteryCostPct.toFixed(1)}% of full charge`} />
-        <Row k="Route" v={`${Math.round(quote.metres).toLocaleString()} m · ${quote.legs.length} stations · ${quote.drills} drill`} />
+        <div className="space-y-0.5 font-mono text-[11px]">
+          <div className="uppercase tracking-wider text-label">Traverse Plan · {Math.round(quote.metres).toLocaleString()} m · {quote.drills} core</div>
+          {quote.legs.map((l, i) => (
+            <div key={i} className="truncate text-log">
+              STATION {(l.purpose?.match(/Station\s+(\w+)/i)?.[1] ?? NATO[i] ?? i + 1).toString().toUpperCase()} · brg {pad3(l.bearing)} · {Math.round(l.distance_m)} m
+            </div>
+          ))}
+        </div>
         <RiskGauge q={quote} />
         <input
           value={reason}
           onChange={(e) => setReason(e.target.value)}
-          placeholder="Reason if rejecting (optional)"
+          placeholder="Reason if declining (optional)"
           className="h-8 w-full rounded border border-white/10 bg-well px-2 font-mono text-[11px] text-log placeholder:text-label/60 focus:outline-none"
         />
         <div className="flex gap-2">
           <Btn c="approve">Approve &amp; Uplink</Btn>
-          <Btn tone="abort" onClick={() => { choose("reject", reason.trim()); setReason(""); }}>Reject</Btn>
+          <Btn tone="abort" onClick={() => { choose("reject", reason.trim()); setReason(""); }}>Decline Plan</Btn>
         </div>
       </Shell>
     );
@@ -143,7 +152,7 @@ export function MissionCards() {
       </Shell>
     );
   }
-  return null;
+  return <SortieCompleteCard />;
 }
 
 export function TransmissionBar() {

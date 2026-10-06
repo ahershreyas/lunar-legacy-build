@@ -27,6 +27,7 @@ let note = "";
 let route: { col: number; row: number }[] = [];
 let drillsLeft = 0;
 let doneM = 0;
+let sortieStartMet = 0;
 
 export type Choice = "approve" | "reject" | "accept_alt" | "override" | "abort" | "confirm" | "proceed" | "longer";
 
@@ -63,7 +64,7 @@ export function emergencyHold() {
   ctrl = null;
   resolver = null;
   S().appendLog("COMMANDER", "EMERGENCY HOLD — all motion stopped, queued traffic purged.", "abort");
-  set({ status: "IDLE", running: false, pending: null, transmission: null, progress: null, quote: null });
+  set({ status: "IDLE", running: false, pending: null, transmission: null, progress: null, quote: null, liveRisk: null });
 }
 export const stopMission = emergencyHold;
 
@@ -120,7 +121,7 @@ function updateProgress(t: TerrainData) {
   while (route.length && gridDistanceM(s.col, s.row, route[0]!.col, route[0]!.row) < 30) route.shift();
   if (!route.length) { set({ progress: null }); return; }
   const q = quoteRoute(t, [{ col: s.col, row: s.row }, ...route], drillsLeft, LANDING_SITE);
-  set({ progress: { remainingM: q.metres, etaS: q.etaSeconds, doneM, totalM: doneM + q.metres } });
+  set({ progress: { remainingM: q.metres, etaS: q.etaSeconds, doneM, totalM: doneM + q.metres }, liveRisk: q });
 }
 
 function setRoute(legs: Leg[]) {
@@ -166,8 +167,12 @@ async function driveLeg(t: TerrainData, signal: AbortSignal, bearing: number, me
   const s = S();
   const mv = applyMove(t, s.col, s.row, bearing, metres);
   await drive(t, signal, mv.path, mv.travelled, mv.batteryCost);
+  if (mv.boundaryHit)
+    S().appendLog("SYSTEM", `BOUNDARY_LIMIT — traverse clipped at survey grid edge after ${mv.travelled} m.`, "hazard");
+  if (mv.peakSlope > 22)
+    S().appendLog("SYSTEM", `SLOPE_LIMIT_EXCEEDED — ${mv.peakSlope.toFixed(1)}° encountered on traverse.`, "abort");
   if (mv.lipHalt) {
-    S().appendLog("SYSTEM", `HALT — ${mv.lipHalt.dropM} m drop detected at ${mv.travelled} m. Motion stopped.`, "abort");
+    S().appendLog("SYSTEM", `OBSTACLE_AVOIDANCE — ${mv.lipHalt.dropM} m drop detected at ${mv.travelled} m. Motion halted.`, "abort");
     return { type: "crater_lip", drop_m: mv.lipHalt.dropM, bearing: Math.round(bearing), halted_after_m: mv.travelled };
   }
   return null;
@@ -175,6 +180,7 @@ async function driveLeg(t: TerrainData, signal: AbortSignal, bearing: number, me
 
 async function returnHome(t: TerrainData, signal: AbortSignal) {
   set({ status: "RETURNING" });
+  S().appendLog("SYSTEM", "RETURN_INITIATED — egress to landing site.", "nominal");
   route = [{ col: LANDING_SITE.col, row: LANDING_SITE.row }];
   drillsLeft = 0;
   const s = S();
@@ -182,7 +188,11 @@ async function returnHome(t: TerrainData, signal: AbortSignal) {
   const dist = gridDistanceM(s.col, s.row, LANDING_SITE.col, LANDING_SITE.row);
   const mv = applyMove(t, s.col, s.row, b, dist);
   await drive(t, signal, mv.path, mv.travelled, mv.batteryCost);
-  set({ status: "COMPLETE", running: false, progress: null });
+  const fin = S();
+  set({
+    status: "COMPLETE", running: false, progress: null, liveRisk: null,
+    summary: { sortieNo: fin.sortieNo, samples: fin.samples.filter((x) => x.met >= sortieStartMet), distanceM: doneM, consumables: fin.battery, durationS: fin.met - sortieStartMet },
+  });
   S().appendLog("SYSTEM", "Rover 1 at landing site. Mission sequence complete.", "nominal");
 }
 
@@ -300,6 +310,7 @@ async function sortie(t: TerrainData, signal: AbortSignal, goal: string) {
     const end = pts[ti]!;
     const lastName = (legs[ti]?.purpose ?? "").match(/Station\s+(\w+)/i)?.[1] ?? NATO[ti] ?? "Final";
     set({
+      liveRisk: q,
       status: "AWAITING_APPROVAL",
       quote: {
         ...q, strategy: verdict.reason, legs,
@@ -309,7 +320,7 @@ async function sortie(t: TerrainData, signal: AbortSignal, goal: string) {
     const c = await awaitChoice({ kind: "approve" }, signal);
     set({ quote: null });
     if (c === "reject") {
-      S().appendLog("COMMANDER", `REJECT — ${note || "plan not approved"}.`, "hazard");
+      S().appendLog("COMMANDER", `DECLINE PLAN — ${note || "plan not approved"}.`, "hazard");
       set({ status: "IDLE", running: false, plannedPath: [] });
       return;
     }
@@ -329,7 +340,7 @@ async function stepLoop(t: TerrainData, signal: AbortSignal, goal: string) {
     if (signal.aborted) throw new Aborted();
     const s = S();
     if (s.battery < FAILSAFE_PCT) {
-      s.appendLog("SYSTEM", `FAILSAFE — consumables ${s.battery.toFixed(0)}%. Safing: forced RETURN.`, "abort");
+      s.appendLog("SYSTEM", `CONSUMABLES_MARGIN — consumables ${s.battery.toFixed(0)}%. Safing: forced RETURN.`, "abort");
       return returnHome(t, signal);
     }
     set({ status: "THINKING" });
@@ -363,7 +374,7 @@ async function stepLoop(t: TerrainData, signal: AbortSignal, goal: string) {
         const legs = await negotiate(t, signal, goal, d, [{ bearing: d.heading, distance_m: d.distance }]);
         if (!legs) return returnHome(t, signal);
         if (d.action === "CAUTION" && d.alternative)
-          S().appendLog("ROVER 1", `DIVERT — ${d.alternative.description}`, "hazard");
+          S().appendLog("ROVER 1", `OBSTACLE_AVOIDANCE — ${d.alternative.description}`, "hazard");
         for (const l of legs) {
           hazard = await driveLeg(t, signal, l.bearing, l.distance_m);
           if (hazard) break;
@@ -382,7 +393,7 @@ async function stepLoop(t: TerrainData, signal: AbortSignal, goal: string) {
         drillsLeft = Math.max(0, drillsLeft - 1);
         S().appendLog(
           "SYSTEM",
-          `INSTRUMENT — FeTiO₃ ${r.reading.ilmenite.toFixed(2)} · Plag ${r.reading.plagioclase.toFixed(2)} · H₂O ${r.reading.waterIce.toFixed(2)}`,
+          `CORE_ACQUIRED — FeTiO₃ ${r.reading.ilmenite.toFixed(2)} · Plag ${r.reading.plagioclase.toFixed(2)} · H₂O ${r.reading.waterIce.toFixed(2)}`,
           "nominal",
         );
         await groundCall(signal, "sample", goal, { reading: r.reading });
@@ -409,8 +420,9 @@ export async function runMission(goal: string) {
   idleCtrl = null;
   ctrl = new AbortController();
   const signal = ctrl.signal;
-  route = []; doneM = 0; drillsLeft = 0;
-  set({ running: true, goal, detour: null, plannedPath: [], proposal: null, quote: null, progress: null });
+  route = []; doneM = 0; drillsLeft = 0; sortieStartMet = S().met;
+  set((st) => ({ sortieNo: st.sortieNo + 1 }));
+  set({ summary: null, liveRisk: null, running: true, goal, detour: null, plannedPath: [], proposal: null, quote: null, progress: null });
   try {
     await sortie(t, signal, goal);
   } catch (e) {
@@ -420,7 +432,7 @@ export async function runMission(goal: string) {
     }
   } finally {
     if (ctrl?.signal === signal) ctrl = null;
-    set({ pending: null, transmission: null, running: false, progress: null });
+    set({ pending: null, transmission: null, running: false, progress: null, liveRisk: null });
     void controlIdleProposal();
   }
 }

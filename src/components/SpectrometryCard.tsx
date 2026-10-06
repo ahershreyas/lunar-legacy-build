@@ -3,9 +3,9 @@ import { useMissionStore } from "../store/useMissionStore";
 import { mineralsAt } from "../sim/terrain";
 
 const RANGES = {
-  ilmenite: { min: 2, max: 24, label: "FeTiO₃ (Ilmenite)" },
-  plagioclase: { min: 45, max: 92, label: "Plagioclase" },
-  waterIce: { min: 0, max: 9, label: "Volatiles / H₂O" },
+  ilmenite: { min: 2, max: 24, label: "FeTiO3 (ILMENITE)" },
+  plagioclase: { min: 45, max: 92, label: "PLAGIOCLASE" },
+  waterIce: { min: 0, max: 9, label: "VOLATILES / H2O" },
 } as const;
 
 export function SpectrometryCard() {
@@ -36,7 +36,7 @@ export function SpectrometryCard() {
           return (
             <div key={k}>
               <div className="mb-1 flex justify-between font-mono text-xs tabular-nums">
-                <span className="font-sans text-[11px] uppercase tracking-wider text-label">
+                <span className="font-sans text-[11px] tracking-wider text-label">
                   {spec.label}
                 </span>
                 <span className="text-telemetry">{v.toFixed(1)}%</span>

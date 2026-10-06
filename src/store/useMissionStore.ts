@@ -46,6 +46,14 @@ export interface ControlProposal {
   transmission: string;
 }
 
+export interface SortieSummary {
+  sortieNo: number;
+  samples: Sample[];
+  distanceM: number;
+  consumables: number;
+  durationS: number;
+}
+
 export interface Sample {
   met: number;
   col: number;
@@ -62,7 +70,7 @@ export interface MissionPlan {
 }
 
 export const LANDING_SITE = { col: 320, row: 687 } as const;
-export const TIME_COMPRESSION = 60;
+export const TIME_COMPRESSION = 120;
 
 interface MissionState {
   terrain: TerrainData | null;
@@ -87,6 +95,10 @@ interface MissionState {
   commsMode: "TEXT" | "VOICE";
   progress: { remainingM: number; etaS: number; doneM: number; totalM: number } | null;
   draft: string;
+  liveRisk: Quote | null;
+  sortieNo: number;
+  summary: SortieSummary | null;
+  load: { loaded: number; total: number };
 
   setTerrain: (t: TerrainData) => void;
   tick: (realDtSeconds: number) => void;
@@ -118,6 +130,10 @@ export const useMissionStore = create<MissionState>((set) => ({
   commsMode: "TEXT",
   progress: null,
   draft: "",
+  liveRisk: null,
+  sortieNo: 0,
+  summary: null,
+  load: { loaded: 0, total: 0 },
 
   setTerrain: (terrain) => set({ terrain }),
   tick: (realDtSeconds) =>
