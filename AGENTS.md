@@ -17,3 +17,4 @@
 - ETA, battery cost and risk % are computed only in src/sim/estimate.ts and passed INTO rover-think; the model never produces them. Why: numbers must be interrogable, not trusted.
 - Every rover-think call goes through ask() in loop.ts with the 1.28 s transmit() delay (src/sim/comms.ts) and one AbortController per mission; REFUSE/CAUTION hold via awaitChoice() until the operator presses a button. Why: human-on-the-loop, EMERGENCY HOLD must purge everything.
 - Mission Control is rover-think mode "ground", called only on IDLE, hazard/detour and sample moments. Why: the rover acts alone between those moments.
+- SceneView3D is a read-only visualization of the mission store; only sim/loop.ts writes the rover pose at 4 Hz. Why: the 3D frame loop must never become a second simulation.

@@ -4,6 +4,7 @@ import { useMissionStore } from "../store/useMissionStore";
 import { loadTerrain } from "../sim/terrain";
 import { TopBar } from "../components/TopBar";
 import { MapView2D } from "../components/MapView2D";
+import { SceneView3D } from "../components/SceneView3D";
 import { SubsystemCard } from "../components/SubsystemCard";
 import { SpectrometryCard } from "../components/SpectrometryCard";
 import { CommsLog } from "../components/CommsLog";
@@ -14,6 +15,7 @@ import { RiskPanel, Attribution } from "../components/OpsPanels";
 import { controlIdleProposal } from "../sim/loop";
 
 export const Route = createFileRoute("/")({
+  ssr: false,
   head: () => ({
     meta: [
       { title: "UMBRA — Lunar Surface Operations" },
@@ -72,7 +74,10 @@ function Index() {
               LOS — TERRAIN DOWNLINK FAILED: {failed}
             </div>
           ) : (
-            <MapView2D />
+            <div className="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_minmax(150px,28%)] gap-3">
+              <SceneView3D />
+              <MapView2D overview />
+            </div>
           )}
         </div>
         <div

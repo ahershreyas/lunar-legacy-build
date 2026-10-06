@@ -26,15 +26,11 @@ const targetPosition = new THREE.Vector3();
 const desiredCamera = new THREE.Vector3();
 const desiredLook = new THREE.Vector3();
 const lookTarget = new THREE.Vector3();
-const headingQuaternion = new THREE.Quaternion();
-const groundQuaternion = new THREE.Quaternion();
 const targetQuaternion = new THREE.Quaternion();
-const groundMatrix = new THREE.Matrix4();
 const forwardVector = new THREE.Vector3();
 const rightVector = new THREE.Vector3();
-const normalVector = new THREE.Vector3();
-const upVector = new THREE.Vector3(0, 1, 0);
-const localForward = new THREE.Vector3(0, 0, -1);
+const cameraForward = new THREE.Vector3();
+const targetEuler = new THREE.Euler(0, 0, 0, "YXZ");
 
 function terrainHeight(terrain: TerrainData, col: number, row: number, originHeight: number) {
   return heightAt(terrain, col, row) - originHeight;
@@ -88,7 +84,17 @@ function Rover({ terrain, originCol, originRow, originHeight }: {
   const previous = useRef({ col: originCol, row: originRow, time: 0, speed: 0 });
   const lastStoreSync = useRef(0);
   const { scene } = useGLTF(MODEL_PATH);
-  const clone = useMemo(() => scene.clone(true), [scene]);
+  const clone = useMemo(() => {
+    const object = scene.clone(true);
+    object.traverse((child) => {
+      if (!(child instanceof THREE.Mesh)) return;
+      child.geometry = child.geometry.clone();
+      child.material = Array.isArray(child.material)
+        ? child.material.map((material) => material.clone())
+        : child.material.clone();
+    });
+    return object;
+  }, [scene]);
 
   useLayoutEffect(() => {
     const wheels: THREE.Object3D[] = [];
@@ -141,7 +147,6 @@ function Rover({ terrain, originCol, originRow, originHeight }: {
     }
 
     const yaw = THREE.MathUtils.degToRad(state.heading);
-    headingQuaternion.setFromAxisAngle(upVector, yaw);
     forwardVector.set(Math.sin(yaw), 0, -Math.cos(yaw));
     rightVector.set(Math.cos(yaw), 0, Math.sin(yaw));
 
@@ -153,10 +158,9 @@ function Rover({ terrain, originCol, originRow, originHeight }: {
     const rearHeight = heightAt(terrain, rearCol, rearRow);
     const averageHeight = (frontHeight + rearHeight) * 0.5 - originHeight - 0.02;
     const rise = frontHeight - rearHeight;
-    normalVector.copy(upVector).addScaledVector(forwardVector, -rise / (AXLE_HALF_LENGTH * 2)).normalize();
-    groundMatrix.makeBasis(rightVector, normalVector, forwardVector.clone().negate());
-    groundQuaternion.setFromRotationMatrix(groundMatrix);
-    targetQuaternion.copy(groundQuaternion);
+    const pitch = -Math.atan2(rise, AXLE_HALF_LENGTH * 2);
+    targetEuler.set(pitch, yaw + Math.PI, 0);
+    targetQuaternion.setFromEuler(targetEuler);
 
     targetPosition.set(local.x, averageHeight, local.z);
     rover.position.lerp(targetPosition, 1 - Math.exp(-18 * delta));
@@ -171,7 +175,7 @@ function Rover({ terrain, originCol, originRow, originHeight }: {
       drill.rotation.x += (drillTarget - drill.rotation.x) * (1 - Math.exp(-8 * delta));
     }
 
-    const cameraForward = localForward.clone().applyQuaternion(rover.quaternion);
+    cameraForward.set(0, 0, 1).applyQuaternion(rover.quaternion);
     desiredCamera.copy(rover.position).addScaledVector(cameraForward, -CHASE_DISTANCE);
     desiredCamera.y += CHASE_HEIGHT;
     desiredLook.copy(rover.position).addScaledVector(cameraForward, 8);
@@ -195,8 +199,6 @@ function Scene({ terrain }: { terrain: TerrainData }) {
 
   return (
     <>
-      <color attach="background" args={["#08090c"]} />
-      <fog attach="fog" args={["#08090c", 350, 1800]} />
       <ambientLight intensity={0.04} />
       <directionalLight
         position={[196, 35, 17]}
