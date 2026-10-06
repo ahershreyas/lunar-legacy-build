@@ -4,6 +4,8 @@
  */
 import { create } from "zustand";
 import type { TerrainData, MineralReading } from "../sim/terrain";
+import type { Quote, Leg } from "../sim/estimate";
+import type { Alternative } from "../lib/rover-think.functions";
 
 export type MissionStatus =
   | "IDLE"
@@ -12,6 +14,7 @@ export type MissionStatus =
   | "DRIVING"
   | "THINKING"
   | "DRILLING"
+  | "HOLDING"
   | "RETURNING"
   | "COMPLETE";
 
@@ -20,6 +23,27 @@ export interface LogEntry {
   who: "ROVER 1" | "CONTROL" | "COMMANDER" | "SYSTEM";
   text: string;
   tone?: "nominal" | "hazard" | "abort" | undefined;
+  voice?: boolean | undefined; // a spoken radio transmission
+}
+
+export interface MissionQuote extends Quote {
+  strategy: string;
+  legs: Leg[];
+  target: { name: string; bearing: number; distance_m: number };
+}
+
+export type Pending =
+  | { kind: "approve" }
+  | { kind: "refuse"; reason: string; transmission: string; alternative: Alternative | null; altQuote: Quote | null }
+  | { kind: "caution"; reason: string; alternative: Alternative | null; timeCostS: number | null }
+  | { kind: "confirm"; reason: string; transmission: string; riskPct: number | null };
+
+export interface ControlProposal {
+  target: string;
+  bearing: number;
+  distance_m: number;
+  rationale: string;
+  transmission: string;
 }
 
 export interface Sample {
@@ -56,10 +80,17 @@ interface MissionState {
   plannedPath: { col: number; row: number }[];
   detour: { col: number; row: number }[] | null;
   running: boolean;
+  quote: MissionQuote | null;
+  pending: Pending | null;
+  transmission: { label: string; progress: number } | null;
+  proposal: ControlProposal | null;
+  commsMode: "TEXT" | "VOICE";
+  progress: { remainingM: number; etaS: number; doneM: number; totalM: number } | null;
+  draft: string;
 
   setTerrain: (t: TerrainData) => void;
   tick: (realDtSeconds: number) => void;
-  appendLog: (who: LogEntry["who"], text: string, tone?: LogEntry["tone"]) => void;
+  appendLog: (who: LogEntry["who"], text: string, tone?: LogEntry["tone"], voice?: boolean) => void;
   setGoal: (goal: string) => void;
   setStatus: (status: MissionStatus) => void;
 }
@@ -80,12 +111,19 @@ export const useMissionStore = create<MissionState>((set) => ({
   plannedPath: [],
   detour: null,
   running: false,
+  quote: null,
+  pending: null,
+  transmission: null,
+  proposal: null,
+  commsMode: "TEXT",
+  progress: null,
+  draft: "",
 
   setTerrain: (terrain) => set({ terrain }),
   tick: (realDtSeconds) =>
     set((s) => ({ met: s.met + realDtSeconds * TIME_COMPRESSION })),
-  appendLog: (who, text, tone) =>
-    set((s) => ({ log: [...s.log, { t: s.met, who, text, tone }] })),
+  appendLog: (who, text, tone, voice) =>
+    set((s) => ({ log: [...s.log, { t: s.met, who, text, tone, voice }] })),
   setGoal: (goal) => set({ goal }),
   setStatus: (status) => set({ status }),
 }));

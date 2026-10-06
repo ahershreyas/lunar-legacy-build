@@ -2,10 +2,22 @@ import { useEffect, useRef } from "react";
 import { Satellite } from "lucide-react";
 import { useMissionStore } from "../store/useMissionStore";
 import { formatMET } from "../utils/coords";
+import { speak } from "../utils/radioVoice";
 
 export function CommsLog() {
   const log = useMissionStore((s) => s.log);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const spoken = useRef(-1);
+
+  useEffect(() => {
+    if (spoken.current < 0) { spoken.current = log.length; return; }
+    const mode = useMissionStore.getState().commsMode;
+    for (let i = spoken.current; i < log.length; i++) {
+      const e = log[i]!;
+      if (mode === "VOICE" && e.voice) speak(e.who, e.text);
+    }
+    spoken.current = log.length;
+  }, [log]);
 
   useEffect(() => {
     const el = scrollRef.current;
