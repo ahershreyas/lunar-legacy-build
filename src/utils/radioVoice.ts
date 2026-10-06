@@ -83,13 +83,27 @@ async function utter(who: string, text: string) {
   await new Promise<void>((resolve) => {
     const u = new SpeechSynthesisUtterance(text);
     const voices = speechSynthesis.getVoices().filter((v) => v.lang.startsWith("en"));
-    const voice =
+    const preferred =
       who === "CONTROL"
-        ? voices[0]
-        : (voices.find((v) => v.voiceURI !== voices[0]?.voiceURI) ?? voices[0]);
+        ? voices.find((v) => /Daniel|Google UK English Male|Alex/i.test(v.name))
+        : voices.find((v) =>
+            /Samantha|Karen|Moira|Google US English|Google UK English Female/i.test(v.name),
+          );
+    const natural = voices.filter(
+      (v) =>
+        !/Albert|Bells|Boing|Bad News|Good News|Bubbles|Cellos|Deranged|Hysterical|Trinoids|Whisper|Zarvox/i.test(
+          v.name,
+        ),
+    );
+    const first = natural[0] ?? voices[0];
+    const voice =
+      preferred ??
+      (who === "CONTROL"
+        ? first
+        : (natural.find((v) => v.voiceURI !== first?.voiceURI) ?? voices[1] ?? first));
     if (voice) u.voice = voice;
     u.rate = 0.9;
-    u.pitch = who === "CONTROL" ? 0.94 : 0.82;
+    u.pitch = 0.94;
     u.volume = 1;
     const role = who === "CONTROL" ? "MISSION CONTROL" : "ROVER 1";
     u.onstart = () =>

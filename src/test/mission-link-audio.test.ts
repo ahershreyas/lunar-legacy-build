@@ -103,7 +103,7 @@ describe("Step 5 radio", () => {
     expect(calls).toHaveLength(2);
     expect(calls.map((u) => u.voice?.voiceURI)).toEqual(["ground", "rover"]);
     expect(calls.every((u) => u.rate === 0.9)).toBe(true);
-    expect(calls.map((u) => u.pitch)).toEqual([0.94, 0.82]);
+    expect(calls.map((u) => u.pitch)).toEqual([0.94, 0.94]);
     expect(frequencies).toEqual([2525, 2475, 2525, 2475]);
   });
   it("cancels queued radio messages when the link is silenced", async () => {
