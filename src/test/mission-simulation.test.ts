@@ -47,6 +47,7 @@ beforeEach(() => {
   think.mockReset();
   useMissionStore.setState({
     ...initial,
+    timeCompression: 120,
     terrain: flat,
     link: "READY",
     trail: [{ ...LANDING_SITE }],
@@ -134,6 +135,21 @@ describe("Mission lifecycle", () => {
     await vi.advanceTimersByTimeAsync(60000);
     expect(think).toHaveBeenCalledTimes(calls);
     choose("abort");
+    await task;
+  });
+  it("drives at lunar pace and applies speed changes during a leg", async () => {
+    setup([decision("MOVE"), decision("HOLD")]);
+    useMissionStore.setState({ timeCompression: 1 });
+    const task = runMission("speed check");
+    await flush();
+    choose("approve");
+    await flush();
+    await vi.advanceTimersByTimeAsync(10000);
+    expect((useMissionStore.getState().col - 320) * 20).toBeCloseTo(2.2, 1);
+    useMissionStore.setState({ timeCompression: 4 });
+    await vi.advanceTimersByTimeAsync(10000);
+    expect((useMissionStore.getState().col - 320) * 20).toBeCloseTo(11, 1);
+    emergencyHold();
     await task;
   });
   it("retains a science station until drilling and completes only after arrival home", async () => {

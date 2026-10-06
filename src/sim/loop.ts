@@ -4,12 +4,7 @@
  * where to go. Only override: hard RETURN failsafe <15%. On REFUSE/CAUTION the
  * rover holds, proposes, and waits for the Commander.
  */
-import {
-  useMissionStore,
-  LANDING_SITE,
-  TIME_COMPRESSION,
-  type Pending,
-} from "../store/useMissionStore";
+import { useMissionStore, LANDING_SITE, type Pending } from "../store/useMissionStore";
 import {
   roverThink,
   type RoverDecision,
@@ -249,8 +244,8 @@ async function drive(
   durationS: number,
 ) {
   const startBattery = S().battery;
-  const duration = Math.max(250, (durationS * 1000) / TIME_COMPRESSION);
-  const t0 = performance.now();
+  let elapsedSim = 0;
+  let previousTime = performance.now();
   const segLens = path
     .slice(1)
     .map((p, i) => gridDistanceM(path[i]!.col, path[i]!.row, p.col, p.row));
@@ -258,7 +253,10 @@ async function drive(
   let prevD = 0;
   for (;;) {
     if (signal.aborted) throw new Aborted();
-    const f = Math.min(1, (performance.now() - t0) / duration);
+    const now = performance.now();
+    elapsedSim += ((now - previousTime) / 1000) * S().timeCompression;
+    previousTime = now;
+    const f = Math.min(1, elapsedSim / Math.max(0.001, durationS));
     let d = f * total,
       i = 0;
     doneM += d - prevD;
@@ -721,7 +719,7 @@ async function stepLoop(t: TerrainData, signal: AbortSignal, goal: string) {
       case "DRILL": {
         set({ status: "DRILLING" });
         // Keep the accelerated drill leg visible while retaining 45 simulated seconds.
-        await sleep(4000, signal);
+        await sleep(Math.max(4000, 45000 / S().timeCompression), signal);
         const r = applyDrill(t, now.col, now.row);
         set((st) => ({
           battery: Math.max(0, st.battery - r.batteryCost),

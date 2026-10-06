@@ -42,7 +42,7 @@ function Terrain({ data }: { data: TerrainData }) {
   }, [source]);
   // Cosmetic centimetre-scale regolith. Does not displace geometry or feed sensors.
   const regolith = useMemo(() => {
-    const size = 256,
+    const size = 128,
       pixels = new Uint8Array(size * size * 4);
     let seed = 731;
     for (let i = 0; i < size * size; i++) {
@@ -87,14 +87,14 @@ function Terrain({ data }: { data: TerrainData }) {
         map={texture}
         roughness={0.98}
         bumpMap={regolith}
-        bumpScale={0.12}
+        bumpScale={0.24}
         onBeforeCompile={(shader) => {
           shader.fragmentShader = shader.fragmentShader.replace(
             "#include <map_fragment>",
             `#include <map_fragment>
              #ifdef USE_BUMPMAP
                float grain = texture2D(bumpMap, vBumpMapUv).r;
-               diffuseColor.rgb *= mix(0.62, 1.02, grain);
+               diffuseColor.rgb *= mix(0.48, 1.04, grain);
              #endif`,
           );
         }}
@@ -310,6 +310,7 @@ function CameraRig({
   const { camera } = useThree();
   const controls = useRef<ElementRef<typeof OrbitControls>>(null);
   const initialized = useRef(false);
+  const previousRover = useRef<{ x: number; z: number; y: number } | null>(null);
   const vectors = useMemo(() => ({ eye: new THREE.Vector3(), target: new THREE.Vector3() }), []);
   useEffect(() => {
     const s = useMissionStore.getState(),
@@ -332,6 +333,24 @@ function CameraRig({
   useFrame((_, dt) => {
     const c = controls.current;
     if (!c) return;
+    const current = useMissionStore.getState();
+    const roverPosition = gridToScene(current.col, current.row);
+    const roverHeight = surfaceHeight(data, current.col, current.row);
+    if (mode === "ORBIT" && previousRover.current) {
+      // Follow translation while retaining the viewing angle selected by dragging.
+      const previous = previousRover.current;
+      const dx = roverPosition.x - previous.x,
+        dz = roverPosition.z - previous.z,
+        dy = roverHeight - previous.y;
+      camera.position.x += dx;
+      camera.position.z += dz;
+      camera.position.y += dy;
+      c.target.x += dx;
+      c.target.z += dz;
+      c.target.y += dy;
+      c.update();
+    }
+    previousRover.current = { ...roverPosition, y: roverHeight };
     if (mode === "CHASE") {
       const s = useMissionStore.getState(),
         p = gridToScene(s.col, s.row),
@@ -414,9 +433,13 @@ class SceneBoundary extends Component<
 }
 export function SceneView3D() {
   const data = useMissionStore((s) => s.terrain);
+  const running = useMissionStore((s) => s.running);
   const [ready, setReady] = useState(false);
   const [mapOnly, setMapOnly] = useState(false);
   const [cameraMode, setCameraMode] = useState<CameraMode>("CHASE");
+  useEffect(() => {
+    if (running) setCameraMode("CHASE");
+  }, [running]);
   useEffect(() => {
     const c = document.createElement("canvas");
     const gl = c.getContext("webgl2");
@@ -475,7 +498,7 @@ export function SceneView3D() {
         ROVER 1 ·{" "}
         {mapOnly
           ? "SURFACE SURVEY"
-          : `${cameraMode === "SURVEY" ? "TERRAIN OVERVIEW" : cameraMode === "ORBIT" ? "ORBIT CAMERA" : "CHASE 35 M"} · DEM 20 M · VISUAL REGOLITH`}
+          : `${cameraMode === "SURVEY" ? "TERRAIN OVERVIEW" : cameraMode === "ORBIT" ? "ORBIT FOLLOW" : "CHASE 35 M"} · DEM 20 M · VISUAL REGOLITH`}
       </div>
       {!mapOnly && (
         <div className="absolute bottom-3 right-28 flex gap-2">

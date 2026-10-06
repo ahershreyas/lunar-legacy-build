@@ -77,7 +77,7 @@ export interface MissionPlan {
 }
 
 export const LANDING_SITE = { col: 320, row: 687 };
-export const TIME_COMPRESSION = 120;
+export const TIME_COMPRESSION = 1;
 
 interface MissionState {
   link: "OFFLINE" | "CHECKING" | "READY" | "UNCONFIGURED" | "FAILED";
@@ -90,7 +90,8 @@ interface MissionState {
   row: number;
   heading: number; // degrees
   battery: number; // percent
-  met: number; // mission elapsed seconds (60x real time)
+  met: number; // mission elapsed simulation seconds
+  timeCompression: number;
   status: MissionStatus;
   goal: string;
   plan: MissionPlan | null;
@@ -131,6 +132,7 @@ export const useMissionStore = create<MissionState>((set) => ({
   heading: 0,
   battery: 100,
   met: 0,
+  timeCompression: TIME_COMPRESSION,
   status: "IDLE",
   goal: "",
   plan: null,
@@ -153,7 +155,7 @@ export const useMissionStore = create<MissionState>((set) => ({
   load: { loaded: 0, total: 0 },
 
   setTerrain: (terrain) => set({ terrain }),
-  tick: (realDtSeconds) => set((s) => ({ met: s.met + realDtSeconds * TIME_COMPRESSION })),
+  tick: (realDtSeconds) => set((s) => ({ met: s.met + realDtSeconds * s.timeCompression })),
   appendLog: (who, text, tone, voice) =>
     set((s) => ({ log: [...s.log, { t: s.met, who, text, tone, voice }] })),
   setGoal: (goal) => set({ goal }),

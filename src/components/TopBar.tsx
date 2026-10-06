@@ -10,6 +10,7 @@ export function TopBar() {
   const row = useMissionStore((s) => s.row);
   const met = useMissionStore((s) => s.met);
   const tick = useMissionStore((s) => s.tick);
+  const timeCompression = useMissionStore((s) => s.timeCompression);
   const comms = useMissionStore((s) => s.commsMode);
   const [sources, setSources] = useState(false);
   const toggleComms = () => {
@@ -65,9 +66,17 @@ export function TopBar() {
           {comms === "VOICE" ? <Volume2 size={11} /> : <VolumeX size={11} />}
           COMMS {comms === "VOICE" ? "TEXT + VOICE" : "TEXT ONLY"}
         </button>
-        <span className="rounded border border-white/10 bg-well px-2 py-0.5 text-label">
-          TIME ×120
-        </span>
+        <select
+          aria-label="Simulation speed"
+          value={timeCompression}
+          onChange={(e) => useMissionStore.setState({ timeCompression: Number(e.target.value) })}
+          className="rounded border border-white/10 bg-well px-2 py-0.5 text-label"
+        >
+          <option value={1}>REAL TIME ×1 · LUNAR PACE</option>
+          <option value={4}>DEMO ×4</option>
+          <option value={12}>DEMO ×12</option>
+          <option value={120}>FAST TEST ×120</option>
+        </select>
         <button
           onClick={() => setSources(true)}
           className="rounded border border-white/10 bg-well px-2 py-0.5 text-label hover:text-telemetry"
