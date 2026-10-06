@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { SendHorizontal } from "lucide-react";
 import { useMissionStore } from "../store/useMissionStore";
+import { runMission } from "../sim/loop";
 
 export function GoalInput() {
   const goal = useMissionStore((s) => s.goal);
@@ -14,7 +15,9 @@ export function GoalInput() {
     setGoal(text);
     appendLog("COMMANDER", text);
     setDraft("");
+    void runMission(text);
   };
+  const running = useMissionStore((s) => s.running);
 
   return (
     <footer className="flex h-14 shrink-0 items-center gap-3 border-t border-white/10 bg-card px-4">
@@ -30,7 +33,8 @@ export function GoalInput() {
       />
       <button
         onClick={transmit}
-        className="flex h-9 items-center gap-2 rounded border border-telemetry/40 bg-telemetry/10 px-4 font-mono text-[11px] uppercase tracking-widest text-telemetry transition-colors hover:bg-telemetry/20"
+        disabled={running}
+        className="flex h-9 items-center gap-2 rounded border border-telemetry/40 bg-telemetry/10 px-4 font-mono text-[11px] uppercase tracking-widest text-telemetry transition-colors hover:bg-telemetry/20 disabled:opacity-40"
       >
         Transmit ⟶ 1.28 s
         <SendHorizontal size={12} />
