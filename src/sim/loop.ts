@@ -383,8 +383,8 @@ export async function controlIdleProposal() {
     s.proposal
   )
     return;
-  if (featuresFor !== s.terrain) {
-    features = surveyFeatures(s.terrain);
+  if (featuresFor !== s.terrain || s.status === "IDLE") {
+    features = surveyFeatures(s.terrain, LANDING_SITE);
     featuresFor = s.terrain;
   }
   idleCtrl = new AbortController();
@@ -695,6 +695,12 @@ async function stepLoop(t: TerrainData, signal: AbortSignal, goal: string) {
         break;
       case "CAUTION":
       case "REFUSE": {
+        await groundCall(signal, "hazard", goal, {
+          rover_action: d.action,
+          reason: d.reason,
+          alternative: d.alternative,
+          awaiting_commander: true,
+        });
         const legs = await negotiate(t, signal, goal, d, [
           { bearing: d.heading, distance_m: d.distance },
         ]);
@@ -765,8 +771,8 @@ async function stepLoop(t: TerrainData, signal: AbortSignal, goal: string) {
 export async function runMission(goal: string) {
   const t = S().terrain;
   if (!t || S().running || S().link !== "READY") return;
-  if (featuresFor !== t) {
-    features = surveyFeatures(t);
+  if (featuresFor !== t || !S().running) {
+    features = surveyFeatures(t, LANDING_SITE);
     featuresFor = t;
   }
   idleCtrl?.abort();
