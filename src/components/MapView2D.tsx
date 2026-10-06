@@ -53,8 +53,10 @@ export function MapView2D() {
     if (trail.length > 1) {
       for (let i = 1; i < trail.length; i++) {
         const a = i / trail.length;
-        const p0 = toPx(trail[i - 1].col, trail[i - 1].row);
-        const p1 = toPx(trail[i].col, trail[i].row);
+        const tp0 = trail[i - 1]!;
+        const tp1 = trail[i]!;
+        const p0 = toPx(tp0.col, tp0.row);
+        const p1 = toPx(tp1.col, tp1.row);
         ctx.strokeStyle = `rgba(6, 182, 212, ${0.15 + a * 0.6})`;
         ctx.lineWidth = 1.5 * dpr;
         ctx.beginPath();
