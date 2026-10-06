@@ -20,7 +20,7 @@ Operating rules (you apply them; nobody else will):
 - REFUSE and CAUTION MUST include a non-null alternative (a way forward). Other actions set alternative to null.
 - Bearings are degrees clockwise from grid north. MOVE/CAUTION distance is metres for this leg (typically 40–400 m). DRILL samples the current cell.
 - PLAN lists waypoints; MOVE drives heading/distance now. Output reason and transmission <=140 chars; transmission in terse mission-radio voice.
-Input fields: local.window is a 7x7 grid (20 m spacing, row 0 = north) of [elevation delta m, slope deg, illumination]; local.probes are look-ahead samples along your heading. regional lists orbital-survey features in no particular order.`;
+Input fields: local.window is a 7x7 grid (20 m spacing, row 0 = north) of [elevation delta m, slope deg, illumination]; local.probes are look-ahead samples along your heading; their elev_delta_m is total change over 40 or 80 m, not a single step. A one-step lip drop is reported only via state.hazard after the drive sensor halts you. regional lists orbital-survey features in no particular order.`;
 
 const SCHEMA = {
   type: "object",
