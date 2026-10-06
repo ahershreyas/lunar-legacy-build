@@ -12,8 +12,13 @@ export function SubsystemCard() {
   const slope = terrain ? slopeAt(terrain, col, row) : 0;
   const illum = terrain ? illuminationAt(terrain, col, row) : 0;
   const health =
-    battery < 15 || slope > 22 ? "OFF-NOMINAL" : battery < 30 || slope > 18 || status === "HOLDING" ? "CAUTION" : "NOMINAL";
-  const healthTone = health === "NOMINAL" ? "text-nominal" : health === "CAUTION" ? "text-hazard" : "text-abort";
+    battery < 15 || slope > 22
+      ? "OFF-NOMINAL"
+      : battery < 30 || slope > 18 || status === "HOLDING"
+        ? "CAUTION"
+        : "NOMINAL";
+  const healthTone =
+    health === "NOMINAL" ? "text-nominal" : health === "CAUTION" ? "text-hazard" : "text-abort";
   const stateLabel = status === "DRILLING" ? "ACQUIRE CORE SAMPLE" : status.replace("_", " ");
 
   return (
@@ -23,7 +28,9 @@ export function SubsystemCard() {
           <Activity size={12} className="text-telemetry" />
           Subsystem Status
         </h2>
-        <span className={`font-mono text-[10px] uppercase tracking-widest ${healthTone}`}>{health}</span>
+        <span className={`font-mono text-[10px] uppercase tracking-widest ${healthTone}`}>
+          {health}
+        </span>
       </header>
 
       <div className="space-y-3 font-mono text-xs tabular-nums">

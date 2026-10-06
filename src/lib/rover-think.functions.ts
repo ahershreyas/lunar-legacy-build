@@ -7,6 +7,7 @@
  * the model never produces them.
  */
 import { createServerFn } from "@tanstack/react-start";
+import { z } from "zod";
 
 const MODEL = "openai/gpt-6-astra";
 const GATEWAY = "https://ai.gateway.lovable.dev/v1/responses";
@@ -41,26 +42,43 @@ Operating rules (you apply them; nobody else will):
 - REFUSE and CAUTION MUST include a non-null alternative (a way forward). Other actions set alternative to null.
 - Bearings are degrees clockwise from grid north. MOVE/CAUTION distance is metres for this leg (typically 40–400 m). DRILL samples the current cell.
 - PLAN lists waypoints; MOVE drives heading/distance now.
-Input fields: local.window is a 7x7 grid (20 m spacing, row 0 = north) of [elevation delta m, slope deg, illumination]; local.probes are look-ahead samples along your heading; their elev_delta_m is total change over 40 or 80 m, not a single step. A one-step lip drop is reported only via state.hazard after the drive sensor halts you. regional lists orbital-survey features in no particular order.
+Input fields: local.window is a 7x7 grid (20 m spacing, row 0 = north) of [elevation delta m, slope deg, illumination]; local.probes are look-ahead samples along your heading; their elev_delta_m is total change over 40 or 80 m, not a single step. Use elevation delta and distance to reason about terrain; the code will not choose a hazard response for you. regional lists orbital-survey features in no particular order.
 Mode rules:
-- mode "plan" (no input.risk): return action PLAN with the full sortie as waypoints. Each waypoint purpose starts with its station name ("Station Alpha — ...", then Bravo, Charlie...) and says "drill" if you will drill there. reason = your strategy in one line. If the goal cannot be done safely, REFUSE with an alternative.
+- mode "plan" (no input.risk): return action PLAN with the full sortie as waypoints. Each waypoint purpose starts with its station name ("Station Alpha — ...", then Bravo, Charlie...) and says "drill" if you will drill there. reason = your strategy in one line. If the goal cannot be done safely, REFUSE with an alternative AND include the requested route in waypoints so code can compute its risk.
 - mode "plan" with input.risk present: you are reviewing your own plan against the code-computed risk (riskPct and four components, with raw figures). Accept with action PLAN (same waypoints), or CAUTION with a longer/safer alternative leg, or REFUSE with an alternative. Cite the figures; never invent or restate a different risk percentage.
 - mode "confirm": the Commander has overridden your refusal. Action HOLD. Restate the risk using input.risk figures and request explicit confirmation before you move. Do not move.
-- mode "step": state.approved_route lists remaining stations relative to you. Follow it unless terrain says otherwise; if you reroute, return the new waypoints. When approved_route is empty, the approved traverse is complete: return action RETURN immediately. Do not HOLD or repeat a completed sample.`;
+- mode "step": state.approved_route lists absolute stations, each bearing/distance measured from your CURRENT position, with purpose and grid coordinates. These are not cumulative legs. Follow the first station, sample if its purpose requests a core, then advance. Never repeat a sample. Return waypoints ONLY to replace the remaining route with an intentional reroute; they are cumulative legs from your current pose.
+- phase RETURNING: navigate home with MOVE actions chosen from the current home bearing/distance and local probes. RETURN signals intent only; it does not drive you. Do not keep returning RETURN. Completion is measured only at the actual landing site.
+- HOLD pauses for human input. Use MOVE for normal navigation, DRILL only at a science station, RETURN after the requested work is done. You can use steps up to 400 m if sensors and orbital survey support them.
+- Sample readings in state.samples and input.event are measured percentages, not fractions. You may report those readings, never invent them.
+- No raw mineral grid or hidden target composition is available. Infer prospects from orbital illumination.
+- Plan the full round trip, including return to the landing site and station purposes. Never omit the return leg from power budgeting.`;
 
 const GROUND_PROMPT = `You are Mission Control — the Flight Director for a lunar south-pole rover sortie. You are a separate person from the rover, on Earth, 1.28 seconds away. You never drive the rover; you advise, propose, confirm or question. The human Flight Commander approves and vetoes. Call the rover "Rover 1".
 Moments (input.moment):
 - "idle": read input.regional (orbital survey) and input.state, and propose one sortie unprompted: target (a feature name), bearing (deg from the rover), distance_m, rationale (<=140 chars). verdict PROPOSE.
 - "hazard": the rover reported a hazard or detour (input.event). Acknowledge it and either CONFIRM or QUESTION the rover's decision. target "", bearing 0, distance_m 0.
-- "sample": the rover returned a core (input.event.reading, fractions 0-1). Acknowledge the science and recommend the next phase in rationale. verdict ACK.
-Prefer cold traps (illumination < 0.05) for water ice within safe range; respect the 22 degree slope limit and battery margin.` ;
+- "sample": the rover returned a core (input.event.reading, percentages 0-100). Acknowledge the science and recommend the next phase in rationale. verdict ACK.
+Prefer cold traps (illumination < 0.05) for water ice within safe range; respect the 22 degree slope limit and battery margin.`;
 
 const ROVER_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["action", "heading", "distance", "waypoints", "risk", "alternative", "reason", "transmission"],
+  required: [
+    "action",
+    "heading",
+    "distance",
+    "waypoints",
+    "risk",
+    "alternative",
+    "reason",
+    "transmission",
+  ],
   properties: {
-    action: { type: "string", enum: ["PLAN", "MOVE", "DRILL", "HOLD", "RETURN", "REFUSE", "CAUTION"] },
+    action: {
+      type: "string",
+      enum: ["PLAN", "MOVE", "DRILL", "HOLD", "RETURN", "REFUSE", "CAUTION"],
+    },
     heading: { type: "number" },
     distance: { type: "number" },
     waypoints: {
@@ -112,7 +130,12 @@ const GROUND_SCHEMA = {
   },
 } as const;
 
-export interface Alternative { bearing: number; distance_m: number; description: string; costDelta: number }
+export interface Alternative {
+  bearing: number;
+  distance_m: number;
+  description: string;
+  costDelta: number;
+}
 
 export interface RoverDecision {
   action: "PLAN" | "MOVE" | "DRILL" | "HOLD" | "RETURN" | "REFUSE" | "CAUTION";
@@ -151,15 +174,51 @@ export interface ThinkInput {
   event?: unknown;
 }
 
+const legValidator = z.object({
+  bearing: z.number().finite(),
+  distance_m: z.number().finite().nonnegative(),
+  purpose: z.string(),
+});
+const alternativeValidator = z.object({
+  bearing: z.number().finite(),
+  distance_m: z.number().finite().nonnegative(),
+  description: z.string(),
+  costDelta: z.number().finite(),
+});
+const roverValidator = z
+  .object({
+    action: z.enum(["PLAN", "MOVE", "DRILL", "HOLD", "RETURN", "REFUSE", "CAUTION"]),
+    heading: z.number().finite(),
+    distance: z.number().finite().nonnegative(),
+    waypoints: z.array(legValidator),
+    risk: z.enum(["LOW", "MEDIUM", "HIGH"]),
+    alternative: alternativeValidator.nullable(),
+    reason: z.string(),
+    transmission: z.string(),
+  })
+  .refine(
+    (d) => !["REFUSE", "CAUTION"].includes(d.action) || d.alternative !== null,
+    "A hold must include an alternative",
+  );
+const groundValidator = z.object({
+  verdict: z.enum(["PROPOSE", "CONFIRM", "QUESTION", "ACK"]),
+  target: z.string(),
+  bearing: z.number().finite(),
+  distance_m: z.number().finite().nonnegative(),
+  rationale: z.string(),
+  transmission: z.string(),
+});
+
 const MODES = ["plan", "step", "confirm", "ground"];
 
 export const roverThink = createServerFn({ method: "POST" })
   .inputValidator((d: ThinkInput) => {
-    if (!d || typeof d.goal !== "string" || d.goal.length > 500 || !MODES.includes(d.mode)) throw new Error("bad input");
-    return { ...d, history: (d.history ?? []).slice(-10) };
+    if (!d || typeof d.goal !== "string" || d.goal.length > 500 || !MODES.includes(d.mode))
+      throw new Error("bad input");
+    return { ...d, history: (d.history ?? []).slice(-8) };
   })
   .handler(async ({ data }): Promise<ThinkResult> => {
-    const apiKey = process.env['LOVABLE_API_KEY'];
+    const apiKey = process.env["LOVABLE_API_KEY"];
     if (!apiKey) return { ok: false, status: 401, message: "Uplink not configured." };
     const ground = data.mode === "ground";
 
@@ -171,9 +230,12 @@ export const roverThink = createServerFn({ method: "POST" })
         Authorization: `Bearer ${apiKey}`,
         "X-Lovable-AIG-SDK": "fetch",
       },
+      signal: AbortSignal.timeout(60000),
       body: JSON.stringify({
         model: MODEL,
-        instructions: ground ? GROUND_PROMPT + "\n" + RADIO : SYSTEM_PROMPT + "\n" + OPERATING_RULES + "\n" + RADIO,
+        instructions: ground
+          ? GROUND_PROMPT + "\n" + RADIO
+          : SYSTEM_PROMPT + "\n" + OPERATING_RULES + "\n" + RADIO,
         input: [{ role: "user", content: JSON.stringify(data) }],
         reasoning: { effort: "low" },
         store: false,
@@ -190,13 +252,16 @@ export const roverThink = createServerFn({ method: "POST" })
       const body = await res.text().catch(() => "");
       console.error("rover-think gateway", res.status, body.slice(0, 500));
       let message = `Uplink error ${res.status}.`;
-      if (res.status === 402) message = "AI credits exhausted — top up in Settings → Plans & credits.";
+      if (res.status === 402)
+        message = "AI credits exhausted — top up in Settings → Plans & credits.";
       else if (res.status === 429) message = "Uplink rate-limited. Stand by and retransmit.";
       else {
         try {
           const j = JSON.parse(body);
           if (j?.error?.message) message = String(j.error.message).slice(0, 200);
-        } catch { /* keep default */ }
+        } catch {
+          /* keep default */
+        }
       }
       return { ok: false, status: res.status, message };
     }
@@ -225,14 +290,18 @@ export const roverThink = createServerFn({ method: "POST" })
             else if (ev.type === "response.refusal.delta") refusal += ev.delta ?? "";
             else if (ev.type === "response.failed" || ev.type === "error")
               failed = ev.response?.error?.message ?? ev.message ?? "Response failed";
-          } catch { /* partial */ }
+          } catch {
+            /* partial */
+          }
         }
       }
     }
     if (refusal) return { ok: false, status: 200, message: `Refused: ${refusal.slice(0, 200)}` };
     if (failed) return { ok: false, status: 500, message: failed.slice(0, 200) };
     try {
-      return { ok: true, decision: JSON.parse(text) };
+      const parsed = JSON.parse(text);
+      const decision = ground ? groundValidator.parse(parsed) : roverValidator.parse(parsed);
+      return { ok: true, decision };
     } catch {
       return { ok: false, status: 500, message: "Garbled downlink — no decision decoded." };
     }

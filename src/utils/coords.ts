@@ -16,7 +16,10 @@ export const LUNAR_RADIUS = 1737400;
 const RAD2DEG = 180 / Math.PI;
 
 /** Grid cell -> real selenographic coordinates. */
-export function toLatLon(col: number, row: number): {
+export function toLatLon(
+  col: number,
+  row: number,
+): {
   latSouth: number;
   lonEast: number;
 } {
@@ -25,7 +28,7 @@ export function toLatLon(col: number, row: number): {
   const rho = Math.hypot(x, y);
   return {
     latSouth: Math.abs(2 * (Math.atan(rho / (2 * LUNAR_RADIUS)) * RAD2DEG - 45)),
-    lonEast: ((Math.atan2(x, y) * RAD2DEG) + 360) % 360,
+    lonEast: (Math.atan2(x, y) * RAD2DEG + 360) % 360,
   };
 }
 
@@ -52,25 +55,15 @@ export function worldToGrid(x: number, z: number): { col: number; row: number } 
 }
 
 /** Distance in metres between two grid points. */
-export function gridDistanceM(
-  colA: number,
-  rowA: number,
-  colB: number,
-  rowB: number,
-): number {
+export function gridDistanceM(colA: number, rowA: number, colB: number, rowB: number): number {
   return Math.hypot(colB - colA, rowB - rowA) * METRES_PER_SAMPLE;
 }
 
 /** Bearing in degrees (0 = north / -row, clockwise) from A to B. */
-export function bearingDeg(
-  colA: number,
-  rowA: number,
-  colB: number,
-  rowB: number,
-): number {
+export function bearingDeg(colA: number, rowA: number, colB: number, rowB: number): number {
   const dCol = colB - colA;
   const dRow = rowB - rowA;
-  return ((Math.atan2(dCol, -dRow) * RAD2DEG) + 360) % 360;
+  return (Math.atan2(dCol, -dRow) * RAD2DEG + 360) % 360;
 }
 
 /** Format mission elapsed seconds as MET HH:MM:SS. */
@@ -81,4 +74,20 @@ export function formatMET(seconds: number): string {
   const sec = s % 60;
   const p = (n: number) => String(n).padStart(2, "0");
   return `${p(h)}:${p(m)}:${p(sec)}`;
+}
+
+/** Bearing offset in the one shared coordinate layer. */
+export function offset(col: number, row: number, bearing: number, metres: number) {
+  const b = (bearing * Math.PI) / 180;
+  return {
+    col: col + (Math.sin(b) * metres) / METRES_PER_SAMPLE,
+    row: row - (Math.cos(b) * metres) / METRES_PER_SAMPLE,
+  };
+}
+export function sceneToGrid(x: number, z: number) {
+  return worldToGrid(x + SPAN_METRES / 2, z + SPAN_METRES / 2);
+}
+export function gridToScene(col: number, row: number) {
+  const p = gridToWorld(col, row);
+  return { x: p.x - SPAN_METRES / 2, z: p.z - SPAN_METRES / 2 };
 }

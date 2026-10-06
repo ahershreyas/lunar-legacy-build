@@ -13,7 +13,9 @@ export function RiskPanel() {
   if (!q || !running || pending?.kind === "approve") return null;
   return (
     <section className="rounded-md border border-white/10 bg-card px-3 py-2">
-      <h2 className="mb-2 text-[11px] font-medium uppercase tracking-[0.18em] text-label">Mission Risk Assessment</h2>
+      <h2 className="mb-2 text-[11px] font-medium uppercase tracking-[0.18em] text-label">
+        Mission Risk Assessment
+      </h2>
       <RiskGauge q={q} />
     </section>
   );
@@ -28,18 +30,25 @@ export function SortieCompleteCard() {
         <span className="text-[10px] uppercase tracking-[0.2em] text-nominal">
           ◆ Sortie Complete — SORTIE-{String(s.sortieNo).padStart(2, "0")}
         </span>
-        <button aria-label="Close summary" onClick={() => useMissionStore.setState({ summary: null })} className="text-label hover:text-log">
+        <button
+          aria-label="Close summary"
+          onClick={() => useMissionStore.setState({ summary: null })}
+          className="text-label hover:text-log"
+        >
           <X size={12} />
         </button>
       </div>
       <Line k="Distance traversed" v={`${Math.round(s.distanceM).toLocaleString()} m`} />
       <Line k="Consumables remaining" v={`${s.consumables.toFixed(1)}%`} />
       <Line k="Mission duration" v={formatDuration(s.durationS)} />
-      <div className="pt-1 text-[10px] uppercase tracking-wider text-label">Samples acquired · {s.samples.length}</div>
+      <div className="pt-1 text-[10px] uppercase tracking-wider text-label">
+        Samples acquired · {s.samples.length}
+      </div>
       {s.samples.length === 0 && <div className="text-label">No cores acquired.</div>}
       {s.samples.map((x, i) => (
         <div key={i} className="rounded bg-well px-2 py-1 text-log">
-          CORE {i + 1} · FeTiO3 {x.reading.ilmenite.toFixed(1)}% · PLAG {x.reading.plagioclase.toFixed(1)}% · H2O {x.reading.waterIce.toFixed(2)}%
+          CORE {i + 1} · FeTiO3 {x.reading.ilmenite.toFixed(1)}% · PLAG{" "}
+          {x.reading.plagioclase.toFixed(1)}% · H2O {x.reading.waterIce.toFixed(2)}%
         </div>
       ))}
     </section>
@@ -55,8 +64,11 @@ const Line = ({ k, v }: { k: string; v: string }) => (
 
 /* ---------- PUSH TO TALK (browser speech recognition, never auto-sends) ---------- */
 type Rec = {
-  lang: string; interimResults: boolean; continuous: boolean;
-  start: () => void; stop: () => void;
+  lang: string;
+  interimResults: boolean;
+  continuous: boolean;
+  start: () => void;
+  stop: () => void;
   onresult: ((e: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null;
   onerror: ((e: { error: string }) => void) | null;
   onend: (() => void) | null;
@@ -69,7 +81,10 @@ export function PushToTalk({ disabled }: { disabled: boolean }) {
   const text = useRef("");
 
   useEffect(() => {
-    const w = window as unknown as { webkitSpeechRecognition?: new () => Rec; SpeechRecognition?: new () => Rec };
+    const w = window as unknown as {
+      webkitSpeechRecognition?: new () => Rec;
+      SpeechRecognition?: new () => Rec;
+    };
     const Ctor = w.SpeechRecognition ?? w.webkitSpeechRecognition;
     if (!Ctor) return;
     const r = new Ctor();
@@ -77,7 +92,10 @@ export function PushToTalk({ disabled }: { disabled: boolean }) {
     r.interimResults = true;
     r.continuous = true;
     r.onresult = (e) => {
-      text.current = Array.from(e.results).map((res) => res[0]?.transcript ?? "").join(" ").trim();
+      text.current = Array.from(e.results)
+        .map((res) => res[0]?.transcript ?? "")
+        .join(" ")
+        .trim();
     };
     r.onerror = (e) => {
       if (e.error === "not-allowed" || e.error === "service-not-allowed") setSupported(false);
@@ -95,9 +113,16 @@ export function PushToTalk({ disabled }: { disabled: boolean }) {
   const down = () => {
     if (disabled || !rec.current) return;
     text.current = "";
-    try { rec.current.start(); setHeld(true); } catch { /* already started */ }
+    try {
+      rec.current.start();
+      setHeld(true);
+    } catch {
+      /* already started */
+    }
   };
-  const up = () => { if (held) rec.current?.stop(); };
+  const up = () => {
+    if (held) rec.current?.stop();
+  };
 
   return (
     <div className="flex items-center gap-2">
@@ -111,34 +136,77 @@ export function PushToTalk({ disabled }: { disabled: boolean }) {
       >
         <Mic size={12} /> Push to Talk
       </button>
-      {held && <span className="animate-pulse font-mono text-[10px] uppercase tracking-widest text-abort">● Receiving Uplink</span>}
+      {held && (
+        <span className="animate-pulse font-mono text-[10px] uppercase tracking-widest text-abort">
+          ● Receiving Uplink
+        </span>
+      )}
     </div>
   );
 }
 
 /* ---------- DATA SOURCES ---------- */
 const SOURCES = [
-  { file: "terrain.bin", inst: "CNSA/CLEP Chang'e-2 CCD stereo DEM (via NASA Moon Trek)", res: "1024 × 1024 Float32 · 20 m/sample · 20.48 km square", proc: "Lunar south polar stereographic projection, 88.65° S to 89.54° S. Elevation destriped to remove along-track banding." },
-  { file: "illumination.bin", inst: "Derived from the DEM above", res: "1024 × 1024 Float32 · 20 m/sample · fraction of lunar day lit (0–1)", proc: "Computed from the DEM by ray-casting the horizon in 24 directions for each cell; permanently shadowed cells read near 0." },
-  { file: "minerals.bin", inst: "Modelled — not an instrument product", res: "3 × 1024 × 1024 Float32 · 20 m/sample · percent", proc: "Ilmenite, plagioclase and water-ice composition modelled from the illumination map, not measured — no polar mineral map exists at 20 m." },
-  { file: "texture.jpg", inst: "NASA/GSFC/Arizona State University LROC (via NASA Moon Trek, JPL-Caltech)", res: "2048 × 2048 albedo · 10 m/pixel", proc: "Pixel-aligned to the terrain grid in the same polar stereographic frame." },
+  {
+    file: "terrain.bin",
+    inst: "CNSA/CLEP Chang'e-2 CCD stereo DEM (via NASA Moon Trek)",
+    res: "1024 × 1024 Float32 · 20 m/sample · 20.48 km square",
+    proc: "Lunar south polar stereographic projection, 88.65° S to 89.54° S. Elevation destriped to remove along-track banding.",
+  },
+  {
+    file: "illumination.bin",
+    inst: "Derived from the DEM above",
+    res: "1024 × 1024 Float32 · 20 m/sample · fraction of lunar day lit (0–1)",
+    proc: "Computed from the DEM by ray-casting the horizon in 24 directions for each cell; permanently shadowed cells read near 0.",
+  },
+  {
+    file: "minerals.bin",
+    inst: "Modelled — not an instrument product",
+    res: "3 × 1024 × 1024 Float32 · 20 m/sample · percent",
+    proc: "Ilmenite, plagioclase and water-ice composition modelled from the illumination map, not measured — no polar mineral map exists at 20 m.",
+  },
+  {
+    file: "texture.jpg",
+    inst: "NASA/GSFC/Arizona State University LROC (via NASA Moon Trek, JPL-Caltech)",
+    res: "2048 × 2048 albedo · 10 m/pixel",
+    proc: "Pixel-aligned to the terrain grid in the same polar stereographic frame.",
+  },
 ];
 
-export function DataSources({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
+export function DataSources({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+}) {
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="w-[440px] border-white/10 bg-card sm:max-w-[440px]">
         <SheetHeader>
-          <SheetTitle className="font-mono text-xs uppercase tracking-[0.2em] text-telemetry">Data Sources</SheetTitle>
-          <SheetDescription className="font-mono text-[11px] text-label">Files loaded by this console, their origin and processing.</SheetDescription>
+          <SheetTitle className="font-mono text-xs uppercase tracking-[0.2em] text-telemetry">
+            Data Sources
+          </SheetTitle>
+          <SheetDescription className="font-mono text-[11px] text-label">
+            Files loaded by this console, their origin and processing.
+          </SheetDescription>
         </SheetHeader>
         <div className="mt-4 space-y-3 overflow-y-auto font-mono text-[11px]">
           {SOURCES.map((s) => (
             <div key={s.file} className="space-y-1 rounded border border-white/10 bg-well p-2">
               <div className="text-telemetry">{s.file}</div>
-              <div className="text-log"><span className="text-label">INSTRUMENT </span>{s.inst}</div>
-              <div className="text-log"><span className="text-label">RESOLUTION </span>{s.res}</div>
-              <div className="text-log"><span className="text-label">PROCESSING </span>{s.proc}</div>
+              <div className="text-log">
+                <span className="text-label">INSTRUMENT </span>
+                {s.inst}
+              </div>
+              <div className="text-log">
+                <span className="text-label">RESOLUTION </span>
+                {s.res}
+              </div>
+              <div className="text-log">
+                <span className="text-label">PROCESSING </span>
+                {s.proc}
+              </div>
             </div>
           ))}
         </div>
@@ -150,7 +218,8 @@ export function DataSources({ open, onOpenChange }: { open: boolean; onOpenChang
 export function Attribution() {
   return (
     <div className="shrink-0 truncate bg-canvas px-4 py-1 font-mono text-[11px] text-attribution">
-      DECISION ENGINE: GPT-6 Astra · TERRAIN: CNSA/CLEP Chang'e-2 DEM · IMAGERY: NASA/GSFC/Arizona State University (LROC) · NASA Moon Trek, JPL-Caltech
+      DECISION ENGINE: GPT-6 Astra · TERRAIN: CNSA/CLEP Chang'e-2 DEM · IMAGERY: NASA/GSFC/Arizona
+      State University (LROC) · NASA Moon Trek, JPL-Caltech
     </div>
   );
 }

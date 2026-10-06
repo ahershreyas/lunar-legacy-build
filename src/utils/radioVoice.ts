@@ -54,7 +54,7 @@ function utter(who: string, text: string) {
   return new Promise<void>((res) => {
     const u = new SpeechSynthesisUtterance(text);
     const voices = speechSynthesis.getVoices().filter((v) => v.lang.startsWith("en"));
-    const v = who === "CONTROL" ? voices[0] : voices[1] ?? voices[0];
+    const v = who === "CONTROL" ? voices[0] : (voices[1] ?? voices[0]);
     if (v) u.voice = v;
     u.rate = 1.08;
     u.pitch = who === "CONTROL" ? 0.85 : 1.1;
@@ -66,16 +66,18 @@ function utter(who: string, text: string) {
 
 export function speak(who: string, text: string) {
   if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
-  queue = queue.then(async () => {
-    const stop = noiseBed();
-    try {
-      await quindar(2525);
-      await utter(who, text);
-      await quindar(2475);
-    } finally {
-      stop();
-    }
-  }).catch(() => undefined);
+  queue = queue
+    .then(async () => {
+      const stop = noiseBed();
+      try {
+        await quindar(2525);
+        await utter(who, text);
+        await quindar(2475);
+      } finally {
+        stop();
+      }
+    })
+    .catch(() => undefined);
 }
 
 export function silence() {

@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useMissionStore } from "../store/useMissionStore";
 import { loadTerrain } from "../sim/terrain";
 import { TopBar } from "../components/TopBar";
+import { SceneView3D } from "../components/SceneView3D";
 import { MapView2D } from "../components/MapView2D";
 import { SubsystemCard } from "../components/SubsystemCard";
 import { SpectrometryCard } from "../components/SpectrometryCard";
@@ -25,8 +26,7 @@ export const Route = createFileRoute("/")({
       { property: "og:title", content: "UMBRA — Lunar Surface Operations" },
       {
         property: "og:description",
-        content:
-          "Autonomous lunar rover operations console at the Moon's south pole.",
+        content: "Autonomous lunar rover operations console at the Moon's south pole.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
@@ -60,7 +60,7 @@ function Index() {
 
   return (
     <div className="flex h-screen flex-col bg-canvas text-foreground">
-      <LoadingScreen done={terrain !== null} />
+      <LoadingScreen done={terrain !== null || failed !== null} />
       <TopBar />
       <main className="flex min-h-0 flex-1 gap-3 p-3">
         <div className="relative min-w-0" style={{ flex: "65 1 0%" }}>
@@ -72,11 +72,16 @@ function Index() {
               LOS — TERRAIN DOWNLINK FAILED: {failed}
             </div>
           ) : (
-            <MapView2D />
+            <SceneView3D />
+          )}
+          {terrain && (
+            <div className="absolute bottom-3 left-3 z-10 h-40 w-48 max-w-[45%] shadow-lg">
+              <MapView2D overview />
+            </div>
           )}
         </div>
         <div
-          className="flex min-h-0 min-w-0 flex-col gap-3"
+          className="flex min-h-0 min-w-0 flex-col gap-3 overflow-y-auto"
           style={{ flex: "35 1 0%" }}
         >
           <SubsystemCard />

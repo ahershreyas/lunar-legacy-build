@@ -4,8 +4,18 @@
  * where to go. Only override: hard RETURN failsafe <15%. On REFUSE/CAUTION the
  * rover holds, proposes, and waits for the Commander.
  */
-import { useMissionStore, LANDING_SITE, type Pending } from "../store/useMissionStore";
-import { roverThink, type RoverDecision, type GroundDecision, type ThinkInput } from "../lib/rover-think.functions";
+import {
+  useMissionStore,
+  LANDING_SITE,
+  TIME_COMPRESSION,
+  type Pending,
+} from "../store/useMissionStore";
+import {
+  roverThink,
+  type RoverDecision,
+  type GroundDecision,
+  type ThinkInput,
+} from "../lib/rover-think.functions";
 import { buildLocal, buildRegional, surveyFeatures } from "./sensors";
 import { applyMove, applyDrill, DRAIN_PER_100M } from "./actions";
 import { quoteRoute, routePoints, countDrills, NATO, type Leg, type Quote } from "./estimate";
@@ -13,7 +23,7 @@ import { transmit, Aborted } from "./comms";
 import { bearingDeg, gridDistanceM } from "../utils/coords";
 import type { TerrainData } from "./terrain";
 
-const MAX_STEPS = 40;
+const MAX_STEPS = 160;
 const FAILSAFE_PCT = 15;
 let features: ReturnType<typeof surveyFeatures> | null = null;
 let featuresFor: TerrainData | null = null;
@@ -24,47 +34,86 @@ let resolver: ((c: Choice) => void) | null = null;
 let note = "";
 
 // Live route tracking (absolute stations remaining) for the progress panel.
-let route: { col: number; row: number }[] = [];
+let route: { col: number; row: number; purpose?: string }[] = [];
+let returning = false;
 let drillsLeft = 0;
 let doneM = 0;
 let sortieStartMet = 0;
 
-export type Choice = "approve" | "reject" | "accept_alt" | "override" | "abort" | "confirm" | "proceed" | "longer";
+export type Choice =
+  | "approve"
+  | "reject"
+  | "accept_alt"
+  | "override"
+  | "abort"
+  | "confirm"
+  | "proceed"
+  | "longer"
+  | "resume";
 
 const S = () => useMissionStore.getState();
 const set = useMissionStore.setState;
 const sleep = (ms: number, signal: AbortSignal) =>
-  new Promise<void>((res, rej) => {
-    if (signal.aborted) return rej(new Aborted());
-    const id = setTimeout(res, ms);
-    signal.addEventListener("abort", () => { clearTimeout(id); rej(new Aborted()); }, { once: true });
+  new Promise<void>((resolve, reject) => {
+    if (signal.aborted) return reject(new Aborted());
+    const abort = () => {
+      clearTimeout(id);
+      reject(new Aborted());
+    };
+    const id = setTimeout(() => {
+      signal.removeEventListener("abort", abort);
+      resolve();
+    }, ms);
+    signal.addEventListener("abort", abort, { once: true });
   });
 
 /** Operator button press. */
 export function choose(c: Choice, reason = "") {
   note = reason;
   const r = resolver;
+  if (!r) return;
   resolver = null;
   set({ pending: null });
   r?.(c);
 }
 
 function awaitChoice(pending: Pending, signal: AbortSignal): Promise<Choice> {
-  return new Promise((res, rej) => {
-    if (signal.aborted) return rej(new Aborted());
+  return new Promise((resolve, reject) => {
+    if (signal.aborted) return reject(new Aborted());
+    const abort = () => {
+      resolver = null;
+      reject(new Aborted());
+    };
+    resolver = (c) => {
+      signal.removeEventListener("abort", abort);
+      if (signal.aborted) reject(new Aborted());
+      else resolve(c);
+    };
+    signal.addEventListener("abort", abort, { once: true });
     set({ pending });
-    resolver = (c) => (signal.aborted ? rej(new Aborted()) : res(c));
-    signal.addEventListener("abort", () => { resolver = null; rej(new Aborted()); }, { once: true });
   });
 }
 
 export function emergencyHold() {
+  idleCtrl?.abort();
+  idleCtrl = null;
   if (!ctrl) return;
   ctrl.abort();
   ctrl = null;
   resolver = null;
-  S().appendLog("COMMANDER", "EMERGENCY HOLD — all motion stopped, queued traffic purged.", "abort");
-  set({ status: "IDLE", running: false, pending: null, transmission: null, progress: null, quote: null, liveRisk: null });
+  S().appendLog(
+    "COMMANDER",
+    "EMERGENCY HOLD — all motion stopped, queued traffic purged.",
+    "abort",
+  );
+  set({
+    status: "HOLDING",
+    running: false,
+    pending: null,
+    transmission: null,
+    progress: null,
+    quote: null,
+  });
 }
 export const stopMission = emergencyHold;
 
@@ -76,32 +125,59 @@ const home = () => ({
 function stateOf(extra: Record<string, unknown> = {}) {
   const s = S();
   return {
-    col: Math.round(s.col), row: Math.round(s.row), heading: Math.round(s.heading),
-    battery: Math.round(s.battery * 10) / 10, met: Math.round(s.met),
+    col: Math.round(s.col),
+    row: Math.round(s.row),
+    heading: Math.round(s.heading),
+    battery: Math.round(s.battery * 10) / 10,
+    met: Math.round(s.met),
     ...home(),
     drain_pct_per_100m: DRAIN_PER_100M,
-    samples_taken: s.samples.length,
+    samples_taken: s.samples.filter((x) => x.met >= sortieStartMet).length,
+    phase: returning ? "RETURNING" : "EXPLORING",
+    samples: s.samples.filter((x) => x.met >= sortieStartMet).slice(-3),
     ...extra,
   };
 }
 
-const history = () => S().log.slice(-10).map((e) => `${e.who}: ${e.text}`);
+const history = () =>
+  S()
+    .log.slice(-8)
+    .map((e) => `${e.who}: ${e.text}`);
 
 function riskBlock(q: Quote) {
   const r2 = (n: number) => Math.round(n * 100) / 100;
   return {
-    riskPct: q.riskPct, band: q.band,
-    components: { slopeRisk: r2(q.components.slopeRisk), powerRisk: r2(q.components.powerRisk), shadowRisk: r2(q.components.shadowRisk), rangeRisk: r2(q.components.rangeRisk) },
-    raw: { peakSlopeDeg: r2(q.raw.peakSlopeDeg), batteryCostPct: r2(q.raw.batteryCostPct), shadowFraction: r2(q.raw.shadowFraction), maxDistanceFromBase_m: Math.round(q.raw.maxDistanceFromBaseM) },
+    riskPct: q.riskPct,
+    band: q.band,
+    components: {
+      slopeRisk: r2(q.components.slopeRisk),
+      powerRisk: r2(q.components.powerRisk),
+      shadowRisk: r2(q.components.shadowRisk),
+      rangeRisk: r2(q.components.rangeRisk),
+    },
+    raw: {
+      peakSlopeDeg: r2(q.raw.peakSlopeDeg),
+      batteryCostPct: r2(q.raw.batteryCostPct),
+      shadowFraction: r2(q.raw.shadowFraction),
+      maxDistanceFromBase_m: Math.round(q.raw.maxDistanceFromBaseM),
+    },
     eta_s: Math.round(q.etaSeconds),
   };
 }
 
 /** Uplink → Astra → downlink, aborting cleanly at every boundary. */
-async function ask<T = RoverDecision>(signal: AbortSignal, data: ThinkInput, label: string): Promise<T | null> {
+async function ask<T = RoverDecision>(
+  signal: AbortSignal,
+  data: ThinkInput,
+  label: string,
+): Promise<T | null> {
   await transmit(signal, `UPLINK · ${label}`);
   if (signal.aborted) throw new Aborted();
-  const res = await roverThink({ data }).catch((e) => ({ ok: false as const, status: 0, message: String(e).slice(0, 160) }));
+  const res = await roverThink({ data, signal }).catch((e) => ({
+    ok: false as const,
+    status: 0,
+    message: String(e).slice(0, 160),
+  }));
   if (signal.aborted) throw new Aborted();
   if (!res.ok) {
     S().appendLog("SYSTEM", `LOS — ${res.message}`, "abort");
@@ -113,153 +189,312 @@ async function ask<T = RoverDecision>(signal: AbortSignal, data: ThinkInput, lab
 
 function quoteLegs(t: TerrainData, legs: Leg[]): Quote {
   const s = S();
-  return quoteRoute(t, routePoints(s.col, s.row, legs), countDrills(legs), LANDING_SITE);
+  const pts = routePoints(s.col, s.row, legs);
+  const end = pts.at(-1)!;
+  // Return reserve is arithmetic, not an automatically selected navigation route.
+  if (gridDistanceM(end.col, end.row, LANDING_SITE.col, LANDING_SITE.row) > 1)
+    pts.push({ ...LANDING_SITE });
+  return quoteRoute(t, pts, countDrills(legs), LANDING_SITE);
 }
 
 function updateProgress(t: TerrainData) {
   const s = S();
-  while (route.length && gridDistanceM(s.col, s.row, route[0]!.col, route[0]!.row) < 30) route.shift();
-  if (!route.length) { set({ progress: null }); return; }
-  const q = quoteRoute(t, [{ col: s.col, row: s.row }, ...route], drillsLeft, LANDING_SITE);
-  set({ progress: { remainingM: q.metres, etaS: q.etaSeconds, doneM, totalM: doneM + q.metres }, liveRisk: q });
+  while (
+    route.length &&
+    gridDistanceM(s.col, s.row, route[0]!.col, route[0]!.row) < 10 &&
+    !/drill|core|sample/i.test(route[0]!.purpose ?? "")
+  )
+    route.shift();
+  if (!route.length) {
+    set({ progress: { remainingM: 0, etaS: drillsLeft * 45, doneM, totalM: doneM } });
+    return;
+  }
+  const pts = [{ col: s.col, row: s.row }, ...route];
+  const end = pts.at(-1)!;
+  if (!returning && gridDistanceM(end.col, end.row, LANDING_SITE.col, LANDING_SITE.row) > 1)
+    pts.push({ ...LANDING_SITE });
+  const q = quoteRoute(t, pts, drillsLeft, LANDING_SITE);
+  set({
+    progress: { remainingM: q.metres, etaS: q.etaSeconds, doneM, totalM: doneM + q.metres },
+    liveRisk: q,
+  });
 }
 
 function setRoute(legs: Leg[]) {
   const s = S();
   const pts = routePoints(s.col, s.row, legs);
-  route = pts.slice(1);
+  route = pts.slice(1).map((p, i) => ({ ...p, purpose: legs[i]?.purpose ?? "Traverse station" }));
   drillsLeft = countDrills(legs);
   set({ plannedPath: pts });
 }
 
 /** Animate along a path; store writes throttled to 4 Hz, map interpolates between them. */
-async function drive(t: TerrainData, signal: AbortSignal, path: { col: number; row: number }[], metres: number, cost: number) {
+async function drive(
+  t: TerrainData,
+  signal: AbortSignal,
+  path: { col: number; row: number }[],
+  metres: number,
+  cost: number,
+  durationS: number,
+) {
   const startBattery = S().battery;
-  const duration = Math.min(8000, Math.max(1200, metres * 12));
+  const duration = Math.max(250, (durationS * 1000) / TIME_COMPRESSION);
   const t0 = performance.now();
-  const segLens = path.slice(1).map((p, i) => gridDistanceM(path[i]!.col, path[i]!.row, p.col, p.row));
+  const segLens = path
+    .slice(1)
+    .map((p, i) => gridDistanceM(path[i]!.col, path[i]!.row, p.col, p.row));
   const total = segLens.reduce((a, b) => a + b, 0) || 1;
   let prevD = 0;
   for (;;) {
     if (signal.aborted) throw new Aborted();
     const f = Math.min(1, (performance.now() - t0) / duration);
-    let d = f * total, i = 0;
+    let d = f * total,
+      i = 0;
     doneM += d - prevD;
     prevD = d;
-    while (i < segLens.length - 1 && d > segLens[i]!) { d -= segLens[i]!; i++; }
-    const a = path[i]!, b = path[i + 1] ?? a;
+    while (i < segLens.length - 1 && d > segLens[i]!) {
+      d -= segLens[i]!;
+      i++;
+    }
+    const a = path[i]!,
+      b = path[i + 1] ?? a;
     const k = segLens[i] ? d / segLens[i]! : 1;
-    const col = a.col + (b.col - a.col) * k, row = a.row + (b.row - a.row) * k;
+    const col = a.col + (b.col - a.col) * k,
+      row = a.row + (b.row - a.row) * k;
     set((s) => ({
-      col, row,
+      col,
+      row,
       heading: segLens[i] ? bearingDeg(a.col, a.row, b.col, b.row) : s.heading,
       battery: Math.max(0, startBattery - cost * f),
       trail: [...s.trail, { col, row }].slice(-400),
     }));
     updateProgress(t);
-    if (f >= 1) break;
+    if (!returning && S().battery < FAILSAFE_PCT) {
+      S().appendLog(
+        "SYSTEM",
+        "CONSUMABLES_MARGIN — low-power safing interrupted traverse; RETURN required.",
+        "abort",
+      );
+      beginReturn();
+      break;
+    }
+    if (S().battery <= 0 || f >= 1) break;
     await sleep(250, signal);
   }
 }
 
 async function driveLeg(t: TerrainData, signal: AbortSignal, bearing: number, metres: number) {
-  set({ status: "DRIVING" });
+  set({ status: returning ? "RETURNING" : "DRIVING" });
   const s = S();
   const mv = applyMove(t, s.col, s.row, bearing, metres);
-  await drive(t, signal, mv.path, mv.travelled, mv.batteryCost);
+  await drive(t, signal, mv.path, mv.travelled, mv.batteryCost, mv.durationS);
   if (mv.boundaryHit)
-    S().appendLog("SYSTEM", `BOUNDARY_LIMIT — traverse clipped at survey grid edge after ${mv.travelled} m.`, "hazard");
+    S().appendLog(
+      "SYSTEM",
+      `BOUNDARY_LIMIT — traverse clipped at survey grid edge after ${mv.travelled} m.`,
+      "hazard",
+    );
   if (mv.peakSlope > 22)
-    S().appendLog("SYSTEM", `SLOPE_LIMIT_EXCEEDED — ${mv.peakSlope.toFixed(1)}° encountered on traverse.`, "abort");
-  if (mv.lipHalt) {
-    S().appendLog("SYSTEM", `OBSTACLE_AVOIDANCE — ${mv.lipHalt.dropM} m drop detected at ${mv.travelled} m. Motion halted.`, "abort");
-    return { type: "crater_lip", drop_m: mv.lipHalt.dropM, bearing: Math.round(bearing), halted_after_m: mv.travelled };
-  }
+    S().appendLog(
+      "SYSTEM",
+      `SLOPE_LIMIT_EXCEEDED — ${mv.peakSlope.toFixed(1)}° encountered on traverse.`,
+      "abort",
+    );
+  if (mv.peakSlope > 22) return { type: "slope_observation", slope_deg: mv.peakSlope, bearing };
   return null;
 }
 
-async function returnHome(t: TerrainData, signal: AbortSignal) {
-  set({ status: "RETURNING" });
-  S().appendLog("SYSTEM", "RETURN_INITIATED — egress to landing site.", "nominal");
-  route = [{ col: LANDING_SITE.col, row: LANDING_SITE.row }];
+function beginReturn() {
+  returning = true;
+  route = [{ ...LANDING_SITE, purpose: "Landing site — return home" }];
   drillsLeft = 0;
-  const s = S();
-  const b = bearingDeg(s.col, s.row, LANDING_SITE.col, LANDING_SITE.row);
-  const dist = gridDistanceM(s.col, s.row, LANDING_SITE.col, LANDING_SITE.row);
-  const mv = applyMove(t, s.col, s.row, b, dist);
-  await drive(t, signal, mv.path, mv.travelled, mv.batteryCost);
+  set({ status: "RETURNING", plannedPath: [{ col: S().col, row: S().row }, ...route] });
+  S().appendLog("SYSTEM", "RETURN_INITIATED — rover navigates egress to landing site.", "nominal");
+}
+function completeSortie() {
   const fin = S();
   set({
-    status: "COMPLETE", running: false, progress: null, liveRisk: null,
-    summary: { sortieNo: fin.sortieNo, samples: fin.samples.filter((x) => x.met >= sortieStartMet), distanceM: doneM, consumables: fin.battery, durationS: fin.met - sortieStartMet },
+    status: "COMPLETE",
+    running: false,
+    progress: null,
+    summary: {
+      sortieNo: fin.sortieNo,
+      samples: fin.samples.filter((x) => x.met >= sortieStartMet),
+      distanceM: doneM,
+      consumables: fin.battery,
+      durationS: fin.met - sortieStartMet,
+    },
   });
-  S().appendLog("SYSTEM", "Rover 1 at landing site. Mission sequence complete.", "nominal");
+  fin.appendLog("SYSTEM", "Rover 1 at landing site. Mission sequence complete.", "nominal");
 }
 
 function logRover(d: RoverDecision, prefix?: string) {
   const tone = d.risk === "HIGH" ? "abort" : d.risk === "MEDIUM" ? "hazard" : "nominal";
-  S().appendLog("ROVER 1", prefix ? `${prefix} — ${d.reason}` : `[${d.action} · ${d.risk}] ${d.reason}`, tone);
+  S().appendLog(
+    "ROVER 1",
+    prefix ? `${prefix} — ${d.reason}` : `[${d.action} · ${d.risk}] ${d.reason}`,
+    tone,
+  );
   S().appendLog("ROVER 1", d.transmission, tone, true);
 }
 
 /** Mission Control (second Astra) — only at hazard/detour and sample moments, plus IDLE. */
-async function groundCall(signal: AbortSignal, moment: "hazard" | "sample", goal: string, event: unknown) {
-  const g = await ask<GroundDecision>(signal, {
-    mode: "ground", moment, goal, event, state: stateOf(), history: history(),
-  }, "CONTROL");
-  if (g) S().appendLog("CONTROL", g.transmission, g.verdict === "QUESTION" ? "hazard" : "nominal", true);
+async function groundCall(
+  signal: AbortSignal,
+  moment: "hazard" | "sample",
+  goal: string,
+  event: unknown,
+) {
+  const g = await ask<GroundDecision>(
+    signal,
+    {
+      mode: "ground",
+      moment,
+      goal,
+      event,
+      state: stateOf(),
+      history: history(),
+    },
+    "CONTROL",
+  );
+  if (g)
+    S().appendLog("CONTROL", g.transmission, g.verdict === "QUESTION" ? "hazard" : "nominal", true);
 }
 
 export async function controlIdleProposal() {
   const s = S();
-  if (!s.terrain || s.running || idleCtrl || s.proposal) return;
-  if (featuresFor !== s.terrain) { features = surveyFeatures(s.terrain); featuresFor = s.terrain; }
+  if (!s.terrain || s.running || s.status !== "IDLE" || idleCtrl || s.proposal) return;
+  if (featuresFor !== s.terrain) {
+    features = surveyFeatures(s.terrain);
+    featuresFor = s.terrain;
+  }
   idleCtrl = new AbortController();
   const signal = idleCtrl.signal;
   try {
-    const g = await ask<GroundDecision>(signal, {
-      mode: "ground", moment: "idle", goal: "", state: stateOf(),
-      regional: buildRegional(features!, s.col, s.row), history: history(),
-    }, "CONTROL");
+    const g = await ask<GroundDecision>(
+      signal,
+      {
+        mode: "ground",
+        moment: "idle",
+        goal: "",
+        state: stateOf(),
+        regional: buildRegional(features!, s.col, s.row),
+        history: history(),
+      },
+      "CONTROL",
+    );
     if (g && !signal.aborted) {
       S().appendLog("CONTROL", g.transmission, "nominal", true);
-      set({ proposal: { target: g.target, bearing: Math.round(g.bearing), distance_m: Math.round(g.distance_m), rationale: g.rationale, transmission: g.transmission } });
+      set({
+        proposal: {
+          target: g.target,
+          bearing: Math.round(g.bearing),
+          distance_m: Math.round(g.distance_m),
+          rationale: g.rationale,
+          transmission: g.transmission,
+        },
+      });
     }
-  } catch { /* aborted */ } finally {
+  } catch {
+    /* aborted */
+  } finally {
     if (idleCtrl?.signal === signal) idleCtrl = null;
   }
 }
 
 /** REFUSE / CAUTION → hold, propose, wait. Returns legs to drive, or null if the sortie is aborted. */
-async function negotiate(t: TerrainData, signal: AbortSignal, goal: string, d: RoverDecision, legs: Leg[]): Promise<Leg[] | null> {
+async function negotiate(
+  t: TerrainData,
+  signal: AbortSignal,
+  goal: string,
+  d: RoverDecision,
+  legs: Leg[],
+): Promise<Leg[] | null> {
   const q = legs.length ? quoteLegs(t, legs) : null;
   if (d.action === "REFUSE") {
     set({ status: "HOLDING" });
-    const alt = d.alternative ? [{ bearing: d.alternative.bearing, distance_m: d.alternative.distance_m, purpose: d.alternative.description }] : [];
-    const c = await awaitChoice({
-      kind: "refuse", reason: d.reason, transmission: d.transmission,
-      alternative: d.alternative, altQuote: alt.length ? quoteLegs(t, alt) : null,
-    }, signal);
-    if (c === "abort") { S().appendLog("COMMANDER", "ABORT SORTIE.", "abort"); return null; }
-    if (c === "accept_alt") { S().appendLog("COMMANDER", `ACCEPT ALTERNATE — ${d.alternative?.description ?? ""}`); return alt; }
+    const alt = d.alternative
+      ? [
+          {
+            bearing: d.alternative.bearing,
+            distance_m: d.alternative.distance_m,
+            purpose: d.alternative.description,
+          },
+        ]
+      : [];
+    const c = await awaitChoice(
+      {
+        kind: "refuse",
+        reason: d.reason,
+        transmission: d.transmission,
+        alternative: d.alternative,
+        altQuote: alt.length ? quoteLegs(t, alt) : null,
+      },
+      signal,
+    );
+    if (c === "abort") {
+      S().appendLog("COMMANDER", "ABORT SORTIE.", "abort");
+      return null;
+    }
+    if (c === "accept_alt") {
+      S().appendLog("COMMANDER", `ACCEPT ALTERNATE — ${d.alternative?.description ?? ""}`);
+      return alt;
+    }
     S().appendLog("COMMANDER", "OVERRIDE — ACCEPT RISK. Requesting rover confirmation.", "hazard");
-    const conf = await ask(signal, {
-      mode: "confirm", goal, state: stateOf(), risk: q ? riskBlock(q) : null,
-      proposed_waypoints: legs, history: history(),
-    }, "OVERRIDE");
+    const conf = await ask(
+      signal,
+      {
+        mode: "confirm",
+        goal,
+        state: stateOf(),
+        risk: q ? riskBlock(q) : null,
+        proposed_waypoints: legs,
+        history: history(),
+      },
+      "OVERRIDE",
+    );
     if (!conf) return null;
     logRover(conf, "RISK RESTATED");
-    const c2 = await awaitChoice({ kind: "confirm", reason: conf.reason, transmission: conf.transmission, riskPct: q?.riskPct ?? null }, signal);
-    if (c2 !== "confirm") { S().appendLog("COMMANDER", "Override withdrawn. Sortie aborted.", "abort"); return null; }
-    S().appendLog("COMMANDER", "Commander accepted the risk. Override confirmed — proceed.", "hazard");
+    const c2 = await awaitChoice(
+      {
+        kind: "confirm",
+        reason: conf.reason,
+        transmission: conf.transmission,
+        riskPct: q?.riskPct ?? null,
+      },
+      signal,
+    );
+    if (c2 !== "confirm") {
+      S().appendLog("COMMANDER", "Override withdrawn. Sortie aborted.", "abort");
+      return null;
+    }
+    S().appendLog(
+      "COMMANDER",
+      "Commander accepted the risk. Override confirmed — proceed.",
+      "hazard",
+    );
     return legs.length ? legs : [{ bearing: d.heading, distance_m: d.distance }];
   }
   if (d.action === "CAUTION") {
     set({ status: "HOLDING" });
-    const alt = d.alternative ? [{ bearing: d.alternative.bearing, distance_m: d.alternative.distance_m, purpose: d.alternative.description }] : null;
+    const alt = d.alternative
+      ? [
+          {
+            bearing: d.alternative.bearing,
+            distance_m: d.alternative.distance_m,
+            purpose: d.alternative.description,
+          },
+        ]
+      : null;
     const timeCostS = alt && q ? quoteLegs(t, alt).etaSeconds - q.etaSeconds : null;
-    const c = await awaitChoice({ kind: "caution", reason: d.reason, alternative: d.alternative, timeCostS }, signal);
-    if (c === "longer" && alt) { S().appendLog("COMMANDER", "TAKE THE LONGER ROUTE."); return alt; }
+    const c = await awaitChoice(
+      { kind: "caution", reason: d.reason, alternative: d.alternative, timeCostS },
+      signal,
+    );
+    if (c === "longer" && alt) {
+      S().appendLog("COMMANDER", "TAKE THE LONGER ROUTE.");
+      return alt;
+    }
     S().appendLog("COMMANDER", "PROCEED on current route.");
     return legs.length ? legs : alt;
   }
@@ -270,23 +505,42 @@ async function sortie(t: TerrainData, signal: AbortSignal, goal: string) {
   // 1. Plan.
   set({ status: "PLANNING" });
   const s0 = S();
-  const plan = await ask(signal, {
-    mode: "plan", goal, state: stateOf(),
-    local: buildLocal(t, s0.col, s0.row, s0.heading), regional: buildRegional(features!, s0.col, s0.row), history: history(),
-  }, "PLAN");
+  const plan = await ask(
+    signal,
+    {
+      mode: "plan",
+      goal,
+      state: stateOf(),
+      local: buildLocal(t, s0.col, s0.row, s0.heading),
+      regional: buildRegional(features!, s0.col, s0.row),
+      history: history(),
+    },
+    "PLAN",
+  );
   if (!plan) return set({ status: "IDLE", running: false });
   logRover(plan);
 
   let legs: Leg[] = plan.waypoints;
   let verdict: RoverDecision = plan;
 
+  if (legs.length) set({ liveRisk: quoteLegs(t, legs) });
   // 2. Code computes the quote; Astra reviews its own plan against the numbers.
   if (plan.action !== "REFUSE" && legs.length) {
     setRoute(legs);
     const q = quoteLegs(t, legs);
-    const review = await ask(signal, {
-      mode: "plan", goal, state: stateOf(), risk: riskBlock(q), proposed_waypoints: legs, history: history(),
-    }, "RISK REVIEW");
+    set({ liveRisk: q });
+    const review = await ask(
+      signal,
+      {
+        mode: "plan",
+        goal,
+        state: stateOf(),
+        risk: riskBlock(q),
+        proposed_waypoints: legs,
+        history: history(),
+      },
+      "RISK REVIEW",
+    );
     if (!review) return set({ status: "IDLE", running: false });
     logRover(review, "REVIEW");
     verdict = review;
@@ -296,7 +550,10 @@ async function sortie(t: TerrainData, signal: AbortSignal, goal: string) {
   // 3. Hold-and-propose on REFUSE / CAUTION; else the mission card.
   if (verdict.action === "REFUSE" || verdict.action === "CAUTION") {
     const chosen = await negotiate(t, signal, goal, verdict, legs);
-    if (!chosen || !chosen.length) { set({ status: "IDLE", running: false, plannedPath: [], detour: null }); return; }
+    if (!chosen || !chosen.length) {
+      set({ status: "IDLE", running: false, plannedPath: [], detour: null });
+      return;
+    }
     legs = chosen;
   } else {
     if (!legs.length) return set({ status: "IDLE", running: false });
@@ -306,15 +563,28 @@ async function sortie(t: TerrainData, signal: AbortSignal, goal: string) {
     // Target = the station farthest from the rover (a loop ends at home, so not the last one).
     const pts = routePoints(s.col, s.row, legs).slice(1);
     let ti = 0;
-    pts.forEach((p, i) => { if (gridDistanceM(s.col, s.row, p.col, p.row) > gridDistanceM(s.col, s.row, pts[ti]!.col, pts[ti]!.row)) ti = i; });
+    pts.forEach((p, i) => {
+      if (
+        gridDistanceM(s.col, s.row, p.col, p.row) >
+        gridDistanceM(s.col, s.row, pts[ti]!.col, pts[ti]!.row)
+      )
+        ti = i;
+    });
     const end = pts[ti]!;
-    const lastName = (legs[ti]?.purpose ?? "").match(/Station\s+(\w+)/i)?.[1] ?? NATO[ti] ?? "Final";
+    const lastName =
+      (legs[ti]?.purpose ?? "").match(/Station\s+(\w+)/i)?.[1] ?? NATO[ti] ?? "Final";
     set({
       liveRisk: q,
       status: "AWAITING_APPROVAL",
       quote: {
-        ...q, strategy: verdict.reason, legs,
-        target: { name: `Station ${lastName}`, bearing: Math.round(bearingDeg(s.col, s.row, end.col, end.row)), distance_m: Math.round(gridDistanceM(s.col, s.row, end.col, end.row)) },
+        ...q,
+        strategy: verdict.reason,
+        legs,
+        target: {
+          name: `Station ${lastName}`,
+          bearing: Math.round(bearingDeg(s.col, s.row, end.col, end.row)),
+          distance_m: Math.round(gridDistanceM(s.col, s.row, end.col, end.row)),
+        },
       },
     });
     const c = await awaitChoice({ kind: "approve" }, signal);
@@ -339,58 +609,94 @@ async function stepLoop(t: TerrainData, signal: AbortSignal, goal: string) {
   for (let step = 0; step < MAX_STEPS; step++) {
     if (signal.aborted) throw new Aborted();
     const s = S();
-    if (s.battery < FAILSAFE_PCT) {
-      s.appendLog("SYSTEM", `CONSUMABLES_MARGIN — consumables ${s.battery.toFixed(0)}%. Safing: forced RETURN.`, "abort");
-      return returnHome(t, signal);
+    if (returning && gridDistanceM(s.col, s.row, LANDING_SITE.col, LANDING_SITE.row) < 1)
+      return completeSortie();
+    if (s.battery <= 0) {
+      s.appendLog(
+        "SYSTEM",
+        "CONSUMABLES_EXHAUSTED — rover stopped away from landing site.",
+        "abort",
+      );
+      return set({ status: "HOLDING", running: false });
+    }
+    if (s.battery < FAILSAFE_PCT && !returning) {
+      s.appendLog(
+        "SYSTEM",
+        `CONSUMABLES_MARGIN — consumables ${s.battery.toFixed(0)}%. Safing: forced RETURN.`,
+        "abort",
+      );
+      beginReturn();
     }
     set({ status: "THINKING" });
     if (hazard) s.appendLog("ROVER 1", "THINK — re-evaluating over a wider arc.", "hazard");
     const approved_route = route.map((p) => ({
       bearing: Math.round(bearingDeg(s.col, s.row, p.col, p.row)),
       distance_m: Math.round(gridDistanceM(s.col, s.row, p.col, p.row)),
+      col: p.col,
+      row: p.row,
+      purpose: p.purpose ?? "Traverse station",
     }));
-    const d = await ask(signal, {
-      mode: "step", goal,
-      state: stateOf({ approved_route, ...(hazard ? { hazard } : {}) }),
-      local: buildLocal(t, s.col, s.row, s.heading, hazard !== null),
-      regional: buildRegional(features!, s.col, s.row),
-      history: history(),
-    }, "TELEMETRY");
+    const d = await ask(
+      signal,
+      {
+        mode: "step",
+        goal,
+        state: stateOf({ approved_route, ...(hazard ? { hazard } : {}) }),
+        local: buildLocal(t, s.col, s.row, s.heading, hazard !== null),
+        regional: buildRegional(features!, s.col, s.row),
+        history: history(),
+        risk: S().liveRisk ? riskBlock(S().liveRisk!) : undefined,
+      },
+      "TELEMETRY",
+    );
     if (!d) return set({ status: "IDLE", running: false });
     logRover(d, hazard ? "NOTIFY" : undefined);
     hazard = null;
 
-    if (d.waypoints.length) setRoute(d.waypoints);
+    if (d.waypoints.length) {
+      setRoute(d.waypoints);
+      set({ detour: routePoints(S().col, S().row, d.waypoints) });
+    }
     const now = S();
-    set({ detour: d.alternative ? routePoints(now.col, now.row, [d.alternative]) : null });
+    if (d.alternative) set({ detour: routePoints(now.col, now.row, [d.alternative]) });
     updateProgress(t);
 
     switch (d.action) {
       case "MOVE":
+        if (S().detour)
+          S().appendLog("SYSTEM", "DIVERT — rover-selected traverse displayed in amber.", "hazard");
         hazard = await driveLeg(t, signal, d.heading, d.distance);
         break;
       case "CAUTION":
       case "REFUSE": {
-        const legs = await negotiate(t, signal, goal, d, [{ bearing: d.heading, distance_m: d.distance }]);
-        if (!legs) return returnHome(t, signal);
+        const legs = await negotiate(t, signal, goal, d, [
+          { bearing: d.heading, distance_m: d.distance },
+        ]);
+        if (!legs) return set({ status: "HOLDING", running: false });
         if (d.action === "CAUTION" && d.alternative)
           S().appendLog("ROVER 1", `OBSTACLE_AVOIDANCE — ${d.alternative.description}`, "hazard");
         for (const l of legs) {
           hazard = await driveLeg(t, signal, l.bearing, l.distance_m);
           if (hazard) break;
         }
-        await groundCall(signal, "hazard", goal, { rover_action: d.action, reason: d.reason, hazard });
+        await groundCall(signal, "hazard", goal, {
+          rover_action: d.action,
+          reason: d.reason,
+          hazard,
+        });
         break;
       }
       case "DRILL": {
         set({ status: "DRILLING" });
-        await sleep(1500, signal);
+        await sleep((45 * 1000) / TIME_COMPRESSION, signal);
         const r = applyDrill(t, now.col, now.row);
         set((st) => ({
           battery: Math.max(0, st.battery - r.batteryCost),
           samples: [...st.samples, { met: st.met, col: now.col, row: now.row, reading: r.reading }],
         }));
         drillsLeft = Math.max(0, drillsLeft - 1);
+        if (route[0] && gridDistanceM(now.col, now.row, route[0].col, route[0].row) < 10)
+          route.shift();
         S().appendLog(
           "SYSTEM",
           `CORE_ACQUIRED — FeTiO₃ ${r.reading.ilmenite.toFixed(2)} · Plag ${r.reading.plagioclase.toFixed(2)} · H₂O ${r.reading.waterIce.toFixed(2)}`,
@@ -400,29 +706,63 @@ async function stepLoop(t: TerrainData, signal: AbortSignal, goal: string) {
         break;
       }
       case "PLAN":
-      case "HOLD":
-        await sleep(600, signal);
+      case "HOLD": {
+        set({ status: "HOLDING" });
+        const c = await awaitChoice({ kind: "pause", reason: d.reason }, signal);
+        if (c !== "resume") return set({ status: "HOLDING", running: false });
         break;
+      }
       case "RETURN":
-        return returnHome(t, signal);
+        if (!returning) beginReturn();
+        else {
+          set({ status: "HOLDING" });
+          const c = await awaitChoice(
+            {
+              kind: "pause",
+              reason:
+                "Return requested again without a move. Resume to request a navigation decision.",
+            },
+            signal,
+          );
+          if (c !== "resume") return;
+        }
+        break;
     }
     if (hazard) await groundCall(signal, "hazard", goal, { hazard });
     updateProgress(t);
   }
-  set({ status: "IDLE", running: false });
+  S().appendLog("SYSTEM", "DECISION_LIMIT — sortie paused for commander review.", "hazard");
+  set({ status: "HOLDING", running: false });
 }
 
 export async function runMission(goal: string) {
   const t = S().terrain;
   if (!t || S().running) return;
-  if (featuresFor !== t) { features = surveyFeatures(t); featuresFor = t; }
+  if (featuresFor !== t) {
+    features = surveyFeatures(t);
+    featuresFor = t;
+  }
   idleCtrl?.abort();
   idleCtrl = null;
   ctrl = new AbortController();
   const signal = ctrl.signal;
-  route = []; doneM = 0; drillsLeft = 0; sortieStartMet = S().met;
+  returning = false;
+  route = [];
+  doneM = 0;
+  drillsLeft = 0;
+  sortieStartMet = S().met;
   set((st) => ({ sortieNo: st.sortieNo + 1 }));
-  set({ summary: null, liveRisk: null, running: true, goal, detour: null, plannedPath: [], proposal: null, quote: null, progress: null });
+  set({
+    summary: null,
+    liveRisk: null,
+    running: true,
+    goal,
+    detour: null,
+    plannedPath: [],
+    proposal: null,
+    quote: null,
+    progress: null,
+  });
   try {
     await sortie(t, signal, goal);
   } catch (e) {
@@ -431,8 +771,9 @@ export async function runMission(goal: string) {
       set({ status: "IDLE", running: false });
     }
   } finally {
-    if (ctrl?.signal === signal) ctrl = null;
-    set({ pending: null, transmission: null, running: false, progress: null, liveRisk: null });
-    void controlIdleProposal();
+    if (ctrl?.signal === signal) {
+      ctrl = null;
+      set({ pending: null, transmission: null, running: false });
+    }
   }
 }

@@ -34,10 +34,15 @@ export function LoadingScreen({ done }: { done: boolean }) {
         {done && phase === 2 ? PHASES[2] : phase === 0 ? "" : PHASES[1]}
       </p>
       <div className="mt-3 h-1 w-64 overflow-hidden rounded bg-well">
-        <div className="h-full bg-telemetry transition-[width] duration-200" style={{ width: `${(done ? 1 : frac) * 100}%` }} />
+        <div
+          className="h-full bg-telemetry transition-[width] duration-200"
+          style={{ width: `${(done ? 1 : frac) * 100}%` }}
+        />
       </div>
       <p className="mt-2 font-mono text-[10px] tabular-nums text-label">
-        {(load.loaded / 1048576).toFixed(1)} / {load.total ? (load.total / 1048576).toFixed(1) : "—"} MB · TERRAIN · ILLUMINATION · MINERALS · TEXTURE
+        {(load.loaded / 1048576).toFixed(1)} /{" "}
+        {load.total ? (load.total / 1048576).toFixed(1) : "—"} MB · TERRAIN · ILLUMINATION ·
+        MINERALS · TEXTURE
       </p>
     </div>
   );

@@ -4,7 +4,6 @@
  * SPEC §1: elevation comes from the .bin files, never from a PNG.
  */
 import { GRID_SIZE, METRES_PER_SAMPLE } from "../utils/coords";
-import mineralsAsset from "../assets/minerals.bin.asset.json";
 
 export interface TerrainData {
   elevation: Float32Array; // [row*1024 + col], metres
@@ -26,7 +25,10 @@ const PLANE = N * N;
 export type LoadProgress = (loaded: number, total: number) => void;
 
 /** Stream a file, reporting bytes as they arrive. */
-async function fetchBytes(url: string, onBytes: (n: number, total: number) => void): Promise<ArrayBuffer> {
+async function fetchBytes(
+  url: string,
+  onBytes: (n: number, total: number) => void,
+): Promise<ArrayBuffer> {
   const res = await fetch(url);
   if (!res.ok || !res.body) throw new Error(`${url} downlink ${res.status}`);
   const total = Number(res.headers.get("content-length")) || 0;
@@ -43,19 +45,42 @@ async function fetchBytes(url: string, onBytes: (n: number, total: number) => vo
   }
   const out = new Uint8Array(got);
   let o = 0;
-  for (const c of chunks) { out.set(c, o); o += c.length; }
+  for (const c of chunks) {
+    out.set(c, o);
+    o += c.length;
+  }
   return out.buffer;
 }
 
 export async function loadTerrain(onProgress?: LoadProgress): Promise<TerrainData> {
-  const files = ["/terrain.bin", "/illumination.bin", mineralsAsset.url, "/texture.jpg"];
+  const files = ["/terrain.bin", "/illumination.bin", "/minerals.bin", "/texture.jpg"];
   const loaded = files.map(() => 0);
   const totals = files.map(() => 0);
-  const report = () => onProgress?.(loaded.reduce((a, b) => a + b, 0), totals.reduce((a, b) => a + b, 0));
-  const bufs = await Promise.all(files.map((f, i) => fetchBytes(f, (n, t) => { loaded[i] = n; totals[i] = t; report(); })));
+  const report = () =>
+    onProgress?.(
+      loaded.reduce((a, b) => a + b, 0),
+      totals.reduce((a, b) => a + b, 0),
+    );
+  const bufs = await Promise.all(
+    files.map((f, i) =>
+      fetchBytes(f, (n, t) => {
+        loaded[i] = n;
+        totals[i] = t;
+        report();
+      }),
+    ),
+  );
   const elevation = new Float32Array(bufs[0]!);
   const illumination = new Float32Array(bufs[1]!);
   const minerals = new Float32Array(bufs[2]!);
+  for (const [name, data, length] of [
+    ["terrain", elevation, PLANE],
+    ["illumination", illumination, PLANE],
+    ["minerals", minerals, 3 * PLANE],
+  ] as const) {
+    if (data.length !== length || data.some((v) => !Number.isFinite(v)))
+      throw new Error(`${name}: invalid binary downlink`);
+  }
   let minElev = Infinity;
   let maxElev = -Infinity;
   for (let i = 0; i < elevation.length; i++) {
@@ -67,10 +92,10 @@ export async function loadTerrain(onProgress?: LoadProgress): Promise<TerrainDat
 }
 
 function sampleBilinear(grid: Float32Array, col: number, row: number): number {
-  const c = Math.min(Math.max(col, 0), N - 1.001);
-  const r = Math.min(Math.max(row, 0), N - 1.001);
-  const c0 = Math.floor(c);
-  const r0 = Math.floor(r);
+  const c = Math.min(Math.max(col, 0), N - 1);
+  const r = Math.min(Math.max(row, 0), N - 1);
+  const c0 = Math.min(Math.floor(c), N - 2);
+  const r0 = Math.min(Math.floor(r), N - 2);
   const fc = c - c0;
   const fr = r - r0;
   const i00 = r0 * N + c0;

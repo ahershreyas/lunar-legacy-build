@@ -1,54 +1,62 @@
-/**
- * Pure action application: the arithmetic that follows from Astra's choice.
- * No route selection, no corrections.
- */
+/** Pure application of model-selected actions; no navigation or hazard decisions. */
 import type { TerrainData, MineralReading } from "./terrain";
-import { heightAt, slopeAt, mineralsAt } from "./terrain";
-import { GRID_SIZE } from "../utils/coords";
-import { offset } from "./sensors";
+import { mineralsAt } from "./terrain";
+import { GRID_SIZE, gridDistanceM, offset } from "../utils/coords";
+import { quoteRoute } from "./estimate";
 
-/** Battery % drained per 100 m on flat ground; slope adds load. */
-export const DRAIN_PER_100M = 0.6;
+export const DRAIN_PER_100M = 0.75;
 export const DRILL_COST = 1.5;
-
 export interface MoveResult {
-  path: { col: number; row: number }[]; // 1 m resolution endpoints, sparse
+  path: { col: number; row: number }[];
   end: { col: number; row: number };
   travelled: number;
   batteryCost: number;
-  lipHalt: { dropM: number } | null;
+  durationS: number;
+  lipHalt: null;
   boundaryHit: boolean;
   peakSlope: number;
 }
-
-/** Drive along bearing for metres. A physical >0.8 m drop in one metre is a lip: motion stops there. */
-export function applyMove(t: TerrainData, col: number, row: number, bearing: number, metres: number): MoveResult {
-  const dist = Math.max(0, metres);
-  const path = [{ col, row }];
-  let prevH = heightAt(t, col, row);
-  let cost = 0;
-  let travelled = 0;
-  let lipHalt: MoveResult["lipHalt"] = null;
-  let boundaryHit = false;
-  let peakSlope = 0;
-  let end = { col, row };
-  for (let m = 1; m <= dist; m++) {
-    const p = offset(col, row, bearing, m);
-    if (p.col < 0 || p.row < 0 || p.col > GRID_SIZE - 1 || p.row > GRID_SIZE - 1) { boundaryHit = true; break; } // clip at grid edge
-    const h = heightAt(t, p.col, p.row);
-    if (prevH - h > 0.8) { lipHalt = { dropM: Math.round((prevH - h) * 10) / 10 }; break; }
-    const sl = slopeAt(t, p.col, p.row);
-    peakSlope = Math.max(peakSlope, sl);
-    cost += (DRAIN_PER_100M / 100) * (1 + sl / 15);
-    prevH = h;
-    travelled = m;
-    end = p;
-    if (m % 20 === 0) path.push(p);
+export function applyMove(
+  t: TerrainData,
+  col: number,
+  row: number,
+  bearing: number,
+  metres: number,
+): MoveResult {
+  const start = { col, row };
+  const requested = offset(col, row, bearing, Math.max(0, metres));
+  const dx = requested.col - col,
+    dy = requested.row - row;
+  let fraction = 1;
+  for (const [v, d] of [
+    [col, dx],
+    [row, dy],
+  ] as [number, number][]) {
+    if (d > 0) fraction = Math.min(fraction, (GRID_SIZE - 1 - v!) / d!);
+    if (d < 0) fraction = Math.min(fraction, -v! / d!);
   }
+  fraction = Math.max(0, fraction);
+  const end = { col: col + dx * fraction, row: row + dy * fraction };
+  const travelled = gridDistanceM(col, row, end.col, end.row);
+  const path = [start];
+  for (let m = 20; m < travelled; m += 20) path.push(offset(col, row, bearing, m));
   path.push(end);
-  return { path, end, travelled, batteryCost: cost, lipHalt, boundaryHit, peakSlope };
+  const q = quoteRoute(t, [start, end], 0, start);
+  return {
+    path,
+    end,
+    travelled,
+    batteryCost: q.batteryCostPct,
+    durationS: q.etaSeconds,
+    boundaryHit: fraction < 1,
+    peakSlope: q.raw.peakSlopeDeg,
+    lipHalt: null,
+  };
 }
-
-export function applyDrill(t: TerrainData, col: number, row: number): { reading: MineralReading; batteryCost: number } {
+export function applyDrill(
+  t: TerrainData,
+  col: number,
+  row: number,
+): { reading: MineralReading; batteryCost: number } {
   return { reading: mineralsAt(t, col, row), batteryCost: DRILL_COST };
 }

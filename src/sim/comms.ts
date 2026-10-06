@@ -7,7 +7,9 @@ import { useMissionStore } from "../store/useMissionStore";
 export const DELAY_MS = 1280;
 
 export class Aborted extends Error {
-  constructor() { super("aborted"); }
+  constructor() {
+    super("aborted");
+  }
 }
 
 export function transmit(signal: AbortSignal, label: string): Promise<void> {

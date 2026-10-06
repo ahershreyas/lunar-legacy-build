@@ -4,9 +4,18 @@ import { runMission, emergencyHold } from "../sim/loop";
 import { PushToTalk } from "./OpsPanels";
 
 const PRESETS = [
-  { label: "Ice core", goal: "Survey the nearest permanently shadowed cold trap, drill one core for water ice, then return to base." },
-  { label: "Ilmenite", goal: "Traverse to the closest flat lowland, drill for ilmenite, then come home with a healthy margin." },
-  { label: "Shakedown", goal: "Short shakedown: a 500 metre loop around the landing site with one drill, then return." },
+  {
+    label: "Ice core",
+    goal: "Survey the nearest permanently shadowed cold trap, drill one core for water ice, then return to base.",
+  },
+  {
+    label: "Ilmenite",
+    goal: "Traverse to the closest flat lowland, drill for ilmenite, then come home with a healthy margin.",
+  },
+  {
+    label: "Shakedown",
+    goal: "Short shakedown: a 500 metre loop around the landing site with one drill, then return.",
+  },
 ];
 
 export function GoalInput() {
@@ -39,7 +48,9 @@ export function GoalInput() {
           </button>
         ))}
         {goal && (
-          <span className="ml-auto hidden max-w-96 truncate font-mono text-[10px] text-label xl:inline">LAST: {goal}</span>
+          <span className="ml-auto hidden max-w-96 truncate font-mono text-[10px] text-label xl:inline">
+            LAST: {goal}
+          </span>
         )}
       </div>
       <div className="flex h-9 items-center gap-3">

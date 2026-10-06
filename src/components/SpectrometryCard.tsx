@@ -1,6 +1,5 @@
 import { FlaskConical } from "lucide-react";
 import { useMissionStore } from "../store/useMissionStore";
-import { mineralsAt } from "../sim/terrain";
 
 const RANGES = {
   ilmenite: { min: 2, max: 24, label: "FeTiO3 (ILMENITE)" },
@@ -9,12 +8,9 @@ const RANGES = {
 } as const;
 
 export function SpectrometryCard() {
-  const terrain = useMissionStore((s) => s.terrain);
-  const col = useMissionStore((s) => s.col);
-  const row = useMissionStore((s) => s.row);
   const samples = useMissionStore((s) => s.samples);
 
-  const reading = terrain ? mineralsAt(terrain, col, row) : null;
+  const reading = samples.at(-1)?.reading ?? null;
 
   return (
     <section className="rounded-md border border-white/10 bg-card p-3">
@@ -39,7 +35,7 @@ export function SpectrometryCard() {
                 <span className="font-sans text-[11px] tracking-wider text-label">
                   {spec.label}
                 </span>
-                <span className="text-telemetry">{v.toFixed(1)}%</span>
+                <span className="text-telemetry">{reading ? `${v.toFixed(1)}%` : "—"}</span>
               </div>
               <div className="h-1.5 overflow-hidden rounded-full bg-well">
                 <div

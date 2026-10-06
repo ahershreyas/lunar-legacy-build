@@ -52,15 +52,20 @@ export function MapView2D({ overview = false }: { overview?: boolean }) {
 
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
       const rect = canvas.getBoundingClientRect();
-      const w = Math.round(rect.width * dpr), h = Math.round(rect.height * dpr);
-      if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+      const w = Math.round(rect.width * dpr),
+        h = Math.round(rect.height * dpr);
+      if (canvas.width !== w || canvas.height !== h) {
+        canvas.width = w;
+        canvas.height = h;
+      }
       ctx.fillStyle = "#08090C";
       ctx.fillRect(0, 0, w, h);
       const side = Math.min(w, h);
-      const ox = (w - side) / 2, oy = (h - side) / 2;
-       const scale = (side / GRID_SIZE) * zoomRef.current;
-       const mapX = overview ? ox : ox + side / 2 - disp.col * scale;
-       const mapY = overview ? oy : oy + side / 2 - disp.row * scale;
+      const ox = (w - side) / 2,
+        oy = (h - side) / 2;
+      const scale = (side / GRID_SIZE) * zoomRef.current;
+      const mapX = overview ? ox : ox + side / 2 - disp.col * scale;
+      const mapY = overview ? oy : oy + side / 2 - disp.row * scale;
       ctx.save();
       ctx.beginPath();
       ctx.rect(ox, oy, side, side);
@@ -74,7 +79,11 @@ export function MapView2D({ overview = false }: { overview?: boolean }) {
         ctx.strokeStyle = color;
         ctx.lineWidth = 1.5 * dpr;
         ctx.beginPath();
-        pts.forEach((q, i) => { const p = toPx(q.col, q.row); i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y); });
+        pts.forEach((q, i) => {
+          const p = toPx(q.col, q.row);
+          if (i) ctx.lineTo(p.x, p.y);
+          else ctx.moveTo(p.x, p.y);
+        });
         ctx.stroke();
         ctx.setLineDash([]);
       };
@@ -88,21 +97,31 @@ export function MapView2D({ overview = false }: { overview?: boolean }) {
         const p1 = toPx(trail[i]!.col, trail[i]!.row);
         ctx.strokeStyle = `rgba(6, 182, 212, ${0.15 + a * 0.6})`;
         ctx.lineWidth = 1.5 * dpr;
-        ctx.beginPath(); ctx.moveTo(p0.x, p0.y); ctx.lineTo(p1.x, p1.y); ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(p0.x, p0.y);
+        ctx.lineTo(p1.x, p1.y);
+        ctx.stroke();
       }
       for (const sm of st.samples) {
         const p = toPx(sm.col, sm.row);
-        ctx.strokeStyle = "#10B981"; ctx.lineWidth = 1.5 * dpr;
+        ctx.strokeStyle = "#10B981";
+        ctx.lineWidth = 1.5 * dpr;
         ctx.strokeRect(p.x - 3 * dpr, p.y - 3 * dpr, 6 * dpr, 6 * dpr);
       }
       const p = toPx(disp.col, disp.row);
       ctx.strokeStyle = "rgba(6, 182, 212, 0.5)";
       ctx.lineWidth = dpr;
-      ctx.beginPath(); ctx.arc(p.x, p.y, 9 * dpr, 0, Math.PI * 2); ctx.stroke();
-      ctx.beginPath(); ctx.arc(p.x, p.y, 5 * dpr, 0, Math.PI * 2);
-      ctx.fillStyle = "rgba(6, 182, 212, 0.32)"; ctx.fill();
-      ctx.beginPath(); ctx.arc(p.x, p.y, 3 * dpr, 0, Math.PI * 2);
-      ctx.fillStyle = "#06B6D4"; ctx.fill();
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 9 * dpr, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 5 * dpr, 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(6, 182, 212, 0.32)";
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 3 * dpr, 0, Math.PI * 2);
+      ctx.fillStyle = "#06B6D4";
+      ctx.fill();
       ctx.restore();
     };
     raf = requestAnimationFrame(frame);
@@ -113,33 +132,36 @@ export function MapView2D({ overview = false }: { overview?: boolean }) {
     <div className="relative h-full w-full overflow-hidden rounded-md border border-border bg-canvas">
       <canvas ref={canvasRef} className="h-full w-full" />
       <div className="pointer-events-none absolute left-3 top-3 font-mono text-[10px] uppercase tracking-[0.2em] text-label">
-        {overview ? "Surface Overview" : "Rover Survey"} — {Math.round((GRID_SIZE * METRES_PER_SAMPLE) / zoom).toLocaleString()} m across · {zoom}×
+        {overview ? "Surface Overview" : "Rover Survey"} —{" "}
+        {Math.round((GRID_SIZE * METRES_PER_SAMPLE) / zoom).toLocaleString()} m across · {zoom}×
       </div>
-      {!overview && <div className="absolute bottom-3 right-3 flex flex-col gap-1 rounded-md border border-border bg-card/90 p-1 shadow-lg backdrop-blur-sm">
-        <Button
-          aria-label="Zoom in on rover"
-          title="Zoom in on rover"
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8 text-telemetry hover:bg-well hover:text-telemetry"
-          disabled={zoom >= MAX_ZOOM}
-          onClick={() => updateZoom(zoom * 2)}
-        >
-          <Plus aria-hidden="true" />
-        </Button>
-        <div className="h-px bg-border" />
-        <Button
-          aria-label="Zoom out from rover"
-          title="Zoom out from rover"
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8 text-telemetry hover:bg-well hover:text-telemetry"
-          disabled={zoom <= MIN_ZOOM}
-          onClick={() => updateZoom(zoom / 2)}
-        >
-          <Minus aria-hidden="true" />
-        </Button>
-      </div>}
+      {!overview && (
+        <div className="absolute bottom-3 right-3 flex flex-col gap-1 rounded-md border border-border bg-card/90 p-1 shadow-lg backdrop-blur-sm">
+          <Button
+            aria-label="Zoom in on rover"
+            title="Zoom in on rover"
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 text-telemetry hover:bg-well hover:text-telemetry"
+            disabled={zoom >= MAX_ZOOM}
+            onClick={() => updateZoom(zoom * 2)}
+          >
+            <Plus aria-hidden="true" />
+          </Button>
+          <div className="h-px bg-border" />
+          <Button
+            aria-label="Zoom out from rover"
+            title="Zoom out from rover"
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 text-telemetry hover:bg-well hover:text-telemetry"
+            disabled={zoom <= MIN_ZOOM}
+            onClick={() => updateZoom(zoom / 2)}
+          >
+            <Minus aria-hidden="true" />
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
@@ -169,8 +191,7 @@ function buildRelief(t: TerrainData): HTMLCanvasElement {
       const slope = Math.atan(Math.hypot(dzdx, dzdy));
       const aspect = Math.atan2(dzdy, -dzdx);
       let shade =
-        Math.sin(alt) * Math.cos(slope) +
-        Math.cos(alt) * Math.sin(slope) * Math.cos(az - aspect);
+        Math.sin(alt) * Math.cos(slope) + Math.cos(alt) * Math.sin(slope) * Math.cos(az - aspect);
       shade = Math.max(0, Math.min(1, shade));
 
       const h = ((e[i] ?? 0) - t.minElev) / range;

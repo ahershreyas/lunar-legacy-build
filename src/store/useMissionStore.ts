@@ -34,7 +34,14 @@ export interface MissionQuote extends Quote {
 
 export type Pending =
   | { kind: "approve" }
-  | { kind: "refuse"; reason: string; transmission: string; alternative: Alternative | null; altQuote: Quote | null }
+  | { kind: "pause"; reason: string }
+  | {
+      kind: "refuse";
+      reason: string;
+      transmission: string;
+      alternative: Alternative | null;
+      altQuote: Quote | null;
+    }
   | { kind: "caution"; reason: string; alternative: Alternative | null; timeCostS: number | null }
   | { kind: "confirm"; reason: string; transmission: string; riskPct: number | null };
 
@@ -136,8 +143,7 @@ export const useMissionStore = create<MissionState>((set) => ({
   load: { loaded: 0, total: 0 },
 
   setTerrain: (terrain) => set({ terrain }),
-  tick: (realDtSeconds) =>
-    set((s) => ({ met: s.met + realDtSeconds * TIME_COMPRESSION })),
+  tick: (realDtSeconds) => set((s) => ({ met: s.met + realDtSeconds * TIME_COMPRESSION })),
   appendLog: (who, text, tone, voice) =>
     set((s) => ({ log: [...s.log, { t: s.met, who, text, tone, voice }] })),
   setGoal: (goal) => set({ goal }),
