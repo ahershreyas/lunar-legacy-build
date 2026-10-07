@@ -14,6 +14,7 @@ import * as THREE from "three";
 import { useMissionStore } from "../store/useMissionStore";
 import { heightAt, slopeAt, illuminationAt, type TerrainData } from "../sim/terrain";
 import { gridToScene, sceneToGrid, SPAN_METRES, gridDistanceM } from "../utils/coords";
+import { wheelRollRadians } from "../utils/roverMotion";
 import { MapView2D } from "./MapView2D";
 
 /** Height of the same 1024-segment triangles used by the visible terrain. */
@@ -217,11 +218,11 @@ function Rover({ data }: { data: TerrainData }) {
         : ((s.heading - previousHeading.current + 540) % 360) - 180;
     for (const wheel of wheels)
       if (wheel) {
-        const side = wheel.name.endsWith("L") ? -1 : 1;
-        wheel.rotation.x -=
-          (speed * delta +
-            (s.status === "TURNING" ? ((side * turnDelta * Math.PI) / 180) * 1.98 : 0)) /
-          0.53;
+        wheel.rotation.x += wheelRollRadians(
+          speed * delta,
+          s.status === "TURNING" ? turnDelta : 0,
+          wheel.position.x,
+        );
       }
     previousHeading.current = s.heading;
     if (drill) drill.rotation.x += ((s.status === "DRILLING" ? 0.65 : 0) - drill.rotation.x) * k;
@@ -436,7 +437,8 @@ function CameraRig({
       makeDefault
       enableDamping
       dampingFactor={0.08}
-      minDistance={10}
+      minDistance={30}
+      enablePan={false}
       maxDistance={34000}
       maxPolarAngle={Math.PI * 0.49}
       onStart={onInteract}

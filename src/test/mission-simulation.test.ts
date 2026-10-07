@@ -1,7 +1,7 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { applyMove, applyDrill } from "../sim/actions";
-import { quoteRoute } from "../sim/estimate";
+import { quoteRoute, countDrills, isScienceStation } from "../sim/estimate";
 import { heightAt, mineralsAt, type TerrainData } from "../sim/terrain";
 import { gridToScene, sceneToGrid } from "../utils/coords";
 import { useMissionStore, LANDING_SITE } from "../store/useMissionStore";
@@ -260,4 +260,14 @@ describe("Mission lifecycle", () => {
     expect(useMissionStore.getState().pending).toBeNull();
     expect(useMissionStore.getState().status).toBe("HOLDING");
   });
+});
+
+it("counts science tasks without treating a return carrying a core as another drill", () => {
+  expect(
+    countDrills([
+      { bearing: 180, distance_m: 40, purpose: "Station Alpha — drill one core if safe" },
+      { bearing: 0, distance_m: 40, purpose: "Station Bravo — return home with the core" },
+    ]),
+  ).toBe(1);
+  expect(isScienceStation("Station Bravo — drive north; no extra sampling")).toBe(false);
 });

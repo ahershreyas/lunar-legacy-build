@@ -13,7 +13,15 @@ import {
 } from "../lib/rover-think.functions";
 import { buildLocal, buildRegional, surveyFeatures } from "./sensors";
 import { applyMove, applyDrill, DRAIN_PER_100M } from "./actions";
-import { quoteRoute, routePoints, countDrills, NATO, type Leg, type Quote } from "./estimate";
+import {
+  quoteRoute,
+  routePoints,
+  countDrills,
+  isScienceStation,
+  NATO,
+  type Leg,
+  type Quote,
+} from "./estimate";
 import { transmit, Aborted } from "./comms";
 import { bearingDeg, gridDistanceM } from "../utils/coords";
 import { silence } from "../utils/radioVoice";
@@ -208,7 +216,7 @@ function updateProgress(t: TerrainData) {
   while (
     route.length &&
     gridDistanceM(s.col, s.row, route[0]!.col, route[0]!.row) < 1 &&
-    !/drill|core|sample/i.test(route[0]!.purpose ?? "")
+    !isScienceStation(route[0]!.purpose)
   )
     route.shift();
   if (!route.length) {

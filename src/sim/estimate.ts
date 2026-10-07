@@ -60,8 +60,17 @@ export function routePoints(col: number, row: number, legs: Leg[]): Pt[] {
   return pts;
 }
 
-export const countDrills = (legs: Leg[]) =>
-  legs.filter((l) => /drill|core|sample/i.test(l.purpose ?? "")).length;
+/** Interpret the model's station task; a return carrying a core is not another drill. */
+export function isScienceStation(purpose = ""): boolean {
+  const task = purpose.replace(/^Station\s+\w+\s*[—–:-]\s*/i, "");
+  if (/^(return|egress|home|landing site|staging)\b/i.test(task)) return false;
+  const affirmative = task.replace(
+    /\b(no|without|do not|don't)\s+(?:(additional|extra|further|more)\s+)?(drill(?:ing)?|cores?|coring|samples?|sampling)\b/gi,
+    "",
+  );
+  return /\b(drill(?:ing)?|cores?|coring|samples?|sampling)\b/i.test(affirmative);
+}
+export const countDrills = (legs: Leg[]) => legs.filter((l) => isScienceStation(l.purpose)).length;
 
 export function riskBand(p: number): RiskBand {
   return p < 25 ? "LOW" : p < 50 ? "MODERATE" : p < 75 ? "HIGH" : "SEVERE";
