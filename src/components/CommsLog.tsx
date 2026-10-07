@@ -40,12 +40,29 @@ export function CommsLog() {
         {(["MISSION CONTROL", "ROVER 1"] as const).map((role) => {
           const active = radio.startsWith(`${role} SPEAKING`);
           return (
-            <div
+            <button
+              type="button"
               key={role}
-              className={`rounded border p-2 ${role === "MISSION CONTROL" ? "border-sky-400/25 text-sky-400" : "border-emerald-400/25 text-emerald-400"}`}
+              aria-label={`Play ${role} radio voice`}
+              title={`Play ${role} voice (Lovable neural · ${role === "MISSION CONTROL" ? "Onyx" : "Nova"})`}
+              onClick={() => {
+                unlockAudio();
+                const last = [...useMissionStore.getState().log]
+                  .reverse()
+                  .find((e) => e.who === (role === "MISSION CONTROL" ? "CONTROL" : "ROVER 1"));
+                speak(
+                  role === "MISSION CONTROL" ? "CONTROL" : "ROVER 1",
+                  last?.text ??
+                    (role === "MISSION CONTROL"
+                      ? "Rover One, Mission Control. Radio check, how copy? Over."
+                      : "Mission Control, Rover One. Read you loud and clear. Standing by. Over."),
+                );
+              }}
+              className={`rounded border p-2 text-left hover:bg-white/5 ${role === "MISSION CONTROL" ? "border-sky-400/25 text-sky-400" : "border-emerald-400/25 text-emerald-400"}`}
             >
               <span className="block text-[9px] tracking-widest">
-                {role} · {active ? "TRANSMITTING" : "STANDBY"}
+                ▶ {role} · {active ? "TRANSMITTING" : "STANDBY"} ·{" "}
+                {role === "MISSION CONTROL" ? "ONYX" : "NOVA"}
               </span>
               <div
                 aria-label={`${role} voice activity`}
