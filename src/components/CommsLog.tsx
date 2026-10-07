@@ -81,7 +81,7 @@ export function CommsLog() {
                   />
                 ))}
               </div>
-            </div>
+            </button>
           );
         })}
       </div>
