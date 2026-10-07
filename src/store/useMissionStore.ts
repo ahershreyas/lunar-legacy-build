@@ -151,7 +151,7 @@ export const useMissionStore = create<MissionState>((set) => ({
   pending: null,
   transmission: null,
   proposal: null,
-  commsMode: "TEXT",
+  commsMode: "VOICE",
   progress: null,
   draft: "",
   liveRisk: null,
