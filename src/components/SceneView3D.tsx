@@ -14,7 +14,7 @@ import * as THREE from "three";
 import { useMissionStore } from "../store/useMissionStore";
 import { heightAt, slopeAt, illuminationAt, type TerrainData } from "../sim/terrain";
 import { gridToScene, sceneToGrid, SPAN_METRES, gridDistanceM } from "../utils/coords";
-import { wheelRollRadians } from "../utils/roverMotion";
+import { pivotSteeringAngle, wheelRollRadians } from "../utils/roverMotion";
 import { MapView2D } from "./MapView2D";
 
 /** Height of the same 1024-segment triangles used by the visible terrain. */
@@ -128,6 +128,12 @@ function Rover({ data }: { data: TerrainData }) {
     for (const name of ["FL", "FR", "ML", "MR", "RL", "RR"]) {
       const wheel = m.getObjectByName(`Wheel_${name}`);
       if (!wheel) continue;
+      const pivot = new THREE.Group();
+      pivot.name = `Steering_${name}`;
+      pivot.position.copy(wheel.position);
+      wheel.parent!.add(pivot);
+      pivot.add(wheel);
+      wheel.position.set(0, 0, 0);
       for (let i = 0; i < 12; i++) {
         const angle = (i * Math.PI) / 6;
         const rib = new THREE.Mesh(
@@ -218,10 +224,16 @@ function Rover({ data }: { data: TerrainData }) {
         : ((s.heading - previousHeading.current + 540) % 360) - 180;
     for (const wheel of wheels)
       if (wheel) {
+        const pivot = wheel.parent!;
+        const angle = pivotSteeringAngle(pivot.position.x, pivot.position.z) * s.steeringAmount;
+        pivot.rotation.y = angle;
         wheel.rotation.x += wheelRollRadians(
           speed * delta,
           s.status === "TURNING" ? turnDelta : 0,
-          wheel.position.x,
+          pivot.position.x,
+          0.53,
+          pivot.position.z,
+          angle,
         );
       }
     previousHeading.current = s.heading;
@@ -254,11 +266,13 @@ function RoverTelemetry({ data }: { data: TerrainData }) {
           SLOPE {slope.toFixed(1)}° · LIGHT {(illuminationAt(data, s.col, s.row) * 100).toFixed(0)}%
         </div>
         <div>
-          {s.status === "TURNING"
-            ? "TURNING · WHEELS PIVOTING"
-            : moving
-              ? `TRAVERSING · TIME ×${s.timeCompression}`
-              : "STATIONARY"}{" "}
+          {s.status === "STEERING" || s.status === "STRAIGHTENING"
+            ? `${s.status} · CORNER WHEELS`
+            : s.status === "TURNING"
+              ? "TURNING · WHEELS PIVOTING"
+              : moving
+                ? `TRAVERSING · TIME ×${s.timeCompression}`
+                : "STATIONARY"}{" "}
           · CORES {s.samples.length}
         </div>
       </div>

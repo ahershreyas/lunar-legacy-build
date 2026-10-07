@@ -11,6 +11,8 @@ export type MissionStatus =
   | "IDLE"
   | "PLANNING"
   | "AWAITING_APPROVAL"
+  | "STEERING"
+  | "STRAIGHTENING"
   | "TURNING"
   | "DRIVING"
   | "THINKING"
@@ -90,6 +92,7 @@ interface MissionState {
   col: number;
   row: number;
   heading: number; // degrees
+  steeringAmount: number; // 0 straight, 1 tangent to in-place turning circle
   battery: number; // percent
   met: number; // mission elapsed simulation seconds
   timeCompression: number;
@@ -131,6 +134,7 @@ export const useMissionStore = create<MissionState>((set) => ({
   col: LANDING_SITE.col,
   row: LANDING_SITE.row,
   heading: 0,
+  steeringAmount: 0,
   battery: 100,
   met: 0,
   timeCompression: TIME_COMPRESSION,

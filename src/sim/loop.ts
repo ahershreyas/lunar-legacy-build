@@ -301,8 +301,26 @@ async function drive(
 }
 
 async function driveLeg(t: TerrainData, signal: AbortSignal, bearing: number, metres: number) {
-  // Execute the model's heading as a finite stationary turn, then drive.
+  // Align steering before rotating the chassis; straighten before translating.
   const turnTarget = ((bearing % 360) + 360) % 360;
+  const needsTurn = Math.abs(((turnTarget - S().heading + 540) % 360) - 180) >= 0.1;
+  async function align(target: number) {
+    set({ status: target ? "STEERING" : "STRAIGHTENING" });
+    let previous = performance.now();
+    while (Math.abs(S().steeringAmount - target) > 0.001) {
+      if (signal.aborted) throw new Aborted();
+      const now = performance.now();
+      const step = ((now - previous) / 1000 / 3) * Math.min(S().timeCompression, 4);
+      previous = now;
+      const current = S().steeringAmount;
+      set({
+        steeringAmount:
+          current + Math.sign(target - current) * Math.min(Math.abs(target - current), step),
+      });
+      await sleep(100, signal);
+    }
+  }
+  if (needsTurn) await align(1);
   let previousTurn = performance.now();
   for (;;) {
     if (signal.aborted) throw new Aborted();
@@ -311,7 +329,9 @@ async function driveLeg(t: TerrainData, signal: AbortSignal, bearing: number, me
     if (Math.abs(difference) < 0.1) break;
     set({ status: "TURNING" });
     const now = performance.now();
-    const step = ((now - previousTurn) / 1000) * 10 * Math.min(current.timeCompression, 4);
+    // Outer wheel speed remains near the 0.22 m/s traverse speed (3.6 degrees/s).
+    const rate = ((0.22 / Math.hypot(1.98, 2.89)) * 180) / Math.PI;
+    const step = ((now - previousTurn) / 1000) * rate * Math.min(current.timeCompression, 4);
     previousTurn = now;
     set({
       heading:
@@ -320,6 +340,7 @@ async function driveLeg(t: TerrainData, signal: AbortSignal, bearing: number, me
     });
     await sleep(100, signal);
   }
+  if (S().steeringAmount > 0) await align(0);
   set({ heading: turnTarget, status: returning ? "RETURNING" : "DRIVING" });
   const s = S();
   const mv = applyMove(t, s.col, s.row, bearing, metres);

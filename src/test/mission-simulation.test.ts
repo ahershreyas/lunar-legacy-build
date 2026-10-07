@@ -29,6 +29,7 @@ const flat: TerrainData = {
 const decision = (action: string, extra = {}) => ({
   action,
   heading: 90,
+  steeringAmount: 0,
   distance: 20,
   waypoints: [],
   risk: "LOW",
@@ -144,9 +145,14 @@ describe("Mission lifecycle", () => {
     await flush();
     choose("approve");
     await flush();
-    await vi.advanceTimersByTimeAsync(3000);
+    await vi.advanceTimersByTimeAsync(1500);
+    expect(useMissionStore.getState().status).toBe("STEERING");
+    expect(useMissionStore.getState().heading).toBe(0);
+    expect(useMissionStore.getState().steeringAmount).toBeCloseTo(0.5, 1);
+    await vi.advanceTimersByTimeAsync(4500);
     expect(useMissionStore.getState().status).toBe("TURNING");
-    expect(useMissionStore.getState().heading).toBeCloseTo(30, 0);
+    expect(useMissionStore.getState().heading).toBeGreaterThan(9);
+    expect(useMissionStore.getState().heading).toBeLessThan(12);
     expect(useMissionStore.getState().col).toBe(320);
     emergencyHold();
     await task;
@@ -180,7 +186,7 @@ describe("Mission lifecycle", () => {
     await flush();
     choose("approve");
     await flush();
-    await vi.advanceTimersByTimeAsync(20000);
+    await vi.advanceTimersByTimeAsync(40000);
     await task;
     const s = useMissionStore.getState();
     expect(s.status).toBe("COMPLETE");
@@ -230,7 +236,7 @@ describe("Mission lifecycle", () => {
     await flush();
     choose("approve");
     await flush();
-    await vi.advanceTimersByTimeAsync(6000);
+    await vi.advanceTimersByTimeAsync(15000);
     expect(useMissionStore.getState().pending?.kind).toBe("pause");
     expect(useMissionStore.getState().col).toBeCloseTo(321);
     expect(useMissionStore.getState().summary).toBeNull();
