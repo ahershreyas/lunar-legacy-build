@@ -420,7 +420,7 @@ async function groundCall(
       "CONTROL",
       g.transmission,
       g.verdict === "QUESTION" ? "hazard" : "nominal",
-      moment === "dispatch",
+      true,
     );
 }
 
