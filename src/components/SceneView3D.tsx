@@ -253,12 +253,15 @@ function RoverTelemetry({ data }: { data: TerrainData }) {
   const slope = slopeAt(data, s.col, s.row);
   const moving = s.status === "DRIVING" || s.status === "RETURNING";
   return (
-    <Html position={[0, 9, 0]} center style={{ pointerEvents: "none" }}>
-      <div className="w-56 rounded border border-sky-400/40 bg-black/85 px-3 py-2 font-mono text-[10px] text-sky-200 shadow-lg">
-        <div className="flex justify-between">
-          <strong>ROVER 1</strong>
+    <Html position={[0, 9, 0]} center zIndexRange={[5, 0]} style={{ pointerEvents: "auto" }}>
+      <details
+        open
+        className="w-56 rounded border border-sky-400/40 bg-black/65 px-3 py-2 font-mono text-[10px] text-sky-200 shadow-lg"
+      >
+        <summary className="flex cursor-pointer justify-between">
+          <strong>ROVER 1 · {s.battery.toFixed(1)}%</strong>
           <span>{s.status}</span>
-        </div>
+        </summary>
         <div className={s.battery < 20 ? "text-red-300" : "text-emerald-300"}>
           BATTERY {s.battery.toFixed(1)}% · HEADING {s.heading.toFixed(0)}°
         </div>
@@ -275,7 +278,7 @@ function RoverTelemetry({ data }: { data: TerrainData }) {
                 : "STATIONARY"}{" "}
           · CORES {s.samples.length}
         </div>
-      </div>
+      </details>
       <div
         className="mx-auto mt-1 flex h-6 w-6 items-center justify-center rounded-full border-2 border-white bg-cyan-500/80 shadow-lg"
         aria-label="Rover position locator"

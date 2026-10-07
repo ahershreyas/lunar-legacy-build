@@ -35,7 +35,7 @@ export function GoalInput() {
 
   return (
     <footer className="flex shrink-0 flex-col gap-2 border-t border-white/10 bg-card px-4 py-2">
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <span className="text-[10px] uppercase tracking-[0.18em] text-label">Presets</span>
         {PRESETS.map((p) => (
           <button
@@ -54,15 +54,17 @@ export function GoalInput() {
           </span>
         )}
       </div>
-      <div className="flex h-9 items-center gap-3">
-        <span className="text-[11px] uppercase tracking-[0.18em] text-label">Capcom Uplink</span>
+      <div className="flex min-h-9 flex-wrap items-center gap-2">
+        <span className="hidden text-[11px] uppercase tracking-[0.18em] text-label lg:inline">
+          Capcom Uplink
+        </span>
         <input
           maxLength={500}
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && transmit()}
           placeholder="State a mission goal in plain English…"
-          className="h-9 flex-1 rounded border border-white/10 bg-well px-3 font-mono text-xs text-log placeholder:text-label/60 focus:border-telemetry/50 focus:outline-none"
+          className="h-9 min-w-40 flex-1 rounded border border-white/10 bg-well px-3 font-mono text-xs text-log placeholder:text-label/60 focus:border-telemetry/50 focus:outline-none"
         />
         <PushToTalk disabled={running || link !== "READY"} />
         <button

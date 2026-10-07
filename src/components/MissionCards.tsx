@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { Children, useState } from "react";
 import { useMissionStore } from "../store/useMissionStore";
 import { choose, runMission, type Choice } from "../sim/loop";
 import { formatDuration, formatEta, NATO } from "../sim/estimate";
@@ -42,10 +42,24 @@ function Shell({
   tone: string;
   children: React.ReactNode;
 }) {
+  const [open, setOpen] = useState(true);
+  const parts = Children.toArray(children);
+  const actions = parts.pop();
   return (
-    <section className="pointer-events-auto w-[380px] max-w-full space-y-3 rounded-md border border-white/15 bg-card/95 p-3 shadow-lg backdrop-blur">
-      <div className={`font-mono text-[10px] uppercase tracking-[0.2em] ${tone}`}>{status}</div>
-      {children}
+    <section className="pointer-events-auto flex max-h-[60vh] w-full flex-col rounded-md border border-telemetry/30 bg-card/80 shadow-lg backdrop-blur">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen(!open)}
+        className={`flex shrink-0 items-center justify-between p-3 text-left font-mono text-[10px] uppercase tracking-widest ${tone}`}
+      >
+        {status}
+        <span>{open ? "− Collapse" : "+ Expand"}</span>
+      </button>
+      <div hidden={!open} className="min-h-0 space-y-3 overflow-y-auto px-3 pb-3">
+        {parts}
+      </div>
+      <div className="shrink-0 border-t border-white/15 bg-card p-3">{actions}</div>
     </section>
   );
 }

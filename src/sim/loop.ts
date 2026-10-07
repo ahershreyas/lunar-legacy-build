@@ -10,6 +10,7 @@ import {
   type RoverDecision,
   type GroundDecision,
   type ThinkInput,
+  type MissionBriefing,
 } from "../lib/rover-think.functions";
 import { buildLocal, buildRegional, surveyFeatures } from "./sensors";
 import { applyMove, applyDrill, DRAIN_PER_100M } from "./actions";
@@ -183,7 +184,7 @@ async function ask<T = RoverDecision>(
 ): Promise<T | null> {
   await transmit(signal, `UPLINK · ${label}`);
   if (signal.aborted) throw new Aborted();
-  const linkField = data.mode === "ground" ? "groundLink" : "roverLink";
+  const linkField = ["ground", "missions"].includes(data.mode) ? "groundLink" : "roverLink";
   set({ [linkField]: "THINKING" });
   const res = await roverThink({ data, signal }).catch((e) => ({
     ok: false as const,
@@ -866,4 +867,25 @@ export async function runMission(goal: string) {
       set({ pending: null, transmission: null, running: false });
     }
   }
+}
+
+/** User-requested Ground briefing: no radio chatter and no autonomous launch. */
+export async function suggestPriorityMissions(
+  signal: AbortSignal,
+): Promise<MissionBriefing | null> {
+  const s = S();
+  if (!s.terrain || s.running || s.link !== "READY") return null;
+  const observed = surveyFeatures(s.terrain, LANDING_SITE);
+  return ask<MissionBriefing>(
+    signal,
+    {
+      mode: "missions",
+      goal: "Suggest prioritized missions for the current rover situation.",
+      state: stateOf(),
+      local: buildLocal(s.terrain, s.col, s.row, s.heading, true),
+      regional: buildRegional(observed, s.col, s.row),
+      history: history(),
+    },
+    "CONTROL BRIEFING",
+  );
 }

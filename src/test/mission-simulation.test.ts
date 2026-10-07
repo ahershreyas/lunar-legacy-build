@@ -17,7 +17,7 @@ vi.mock("../sim/comms", async (load) => {
     },
   };
 });
-import { runMission, choose, emergencyHold } from "../sim/loop";
+import { runMission, choose, emergencyHold, suggestPriorityMissions } from "../sim/loop";
 const N = 1024 * 1024;
 const flat: TerrainData = {
   elevation: new Float32Array(N),
@@ -276,4 +276,30 @@ it("counts science tasks without treating a return carrying a core as another dr
     ]),
   ).toBe(1);
   expect(isScienceStation("Station Bravo — drive north; no extra sampling")).toBe(false);
+});
+
+describe("Mission Control recommendations", () => {
+  it("uses live observations without moving or revealing hidden mineral data", async () => {
+    const missions = [
+      {
+        title: "Scout nearby",
+        priority: "HIGH",
+        goal: "Scout twenty metres east and return.",
+        rationale: "Local slope allows a short shakedown.",
+      },
+    ];
+    think.mockResolvedValue({ ok: true, decision: { missions } });
+    const before = useMissionStore.getState();
+    const result = await suggestPriorityMissions(new AbortController().signal);
+    expect(result?.missions).toEqual(missions);
+    const input = think.mock.calls[0]![0].data;
+    expect(input.mode).toBe("missions");
+    expect(input.local.here).toBeDefined();
+    expect(JSON.stringify(input)).not.toContain("waterIce");
+    const after = useMissionStore.getState();
+    expect(after.col).toBe(before.col);
+    expect(after.row).toBe(before.row);
+    expect(after.running).toBe(false);
+    expect(after.pending).toBeNull();
+  });
 });

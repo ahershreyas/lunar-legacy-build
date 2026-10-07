@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { transcribeUplink } from "../lib/rover-think.functions";
 import { Mic, X } from "lucide-react";
 import { useMissionStore } from "../store/useMissionStore";
 import { formatDuration } from "../sim/estimate";
@@ -62,84 +63,134 @@ const Line = ({ k, v }: { k: string; v: string }) => (
   </div>
 );
 
-/* ---------- PUSH TO TALK (browser speech recognition, never auto-sends) ---------- */
-type Rec = {
-  lang: string;
-  interimResults: boolean;
-  continuous: boolean;
-  start: () => void;
-  stop: () => void;
-  onresult: ((e: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null;
-  onerror: ((e: { error: string }) => void) | null;
-  onend: (() => void) | null;
-};
-
+/* Voice recording works without browser-specific SpeechRecognition. */
 export function PushToTalk({ disabled }: { disabled: boolean }) {
-  const [supported, setSupported] = useState(false);
-  const [held, setHeld] = useState(false);
-  const rec = useRef<Rec | null>(null);
-  const text = useRef("");
-
+  const [phase, setPhase] = useState<"idle" | "requesting" | "recording" | "transcribing">("idle");
+  const [message, setMessage] = useState("");
+  const recorder = useRef<MediaRecorder | null>(null);
+  const stream = useRef<MediaStream | null>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mounted = useRef(true);
   useEffect(() => {
-    const w = window as unknown as {
-      webkitSpeechRecognition?: new () => Rec;
-      SpeechRecognition?: new () => Rec;
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      if (timer.current) clearTimeout(timer.current);
+      if (recorder.current?.state === "recording") recorder.current.stop();
+      stream.current?.getTracks().forEach((t) => t.stop());
     };
-    const Ctor = w.SpeechRecognition ?? w.webkitSpeechRecognition;
-    if (!Ctor) return;
-    const r = new Ctor();
-    r.lang = "en-US";
-    r.interimResults = true;
-    r.continuous = true;
-    r.onresult = (e) => {
-      text.current = Array.from(e.results)
-        .map((res) => res[0]?.transcript ?? "")
-        .join(" ")
-        .trim();
-    };
-    r.onerror = (e) => {
-      if (e.error === "not-allowed" || e.error === "service-not-allowed") setSupported(false);
-      setHeld(false);
-    };
-    r.onend = () => {
-      setHeld(false);
-      if (text.current) useMissionStore.setState({ draft: text.current });
-    };
-    rec.current = r;
-    setSupported(true);
   }, []);
-
-  if (!supported) return null;
-  const down = () => {
-    if (disabled || !rec.current) return;
-    text.current = "";
+  const toggle = async () => {
+    if (phase === "recording") {
+      recorder.current?.stop();
+      return;
+    }
+    if (disabled || phase !== "idle") return;
+    setMessage("");
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+      setMessage(
+        "Microphone recording unavailable in this browser. Open the app preview in a browser or type your mission.",
+      );
+      return;
+    }
+    setPhase("requesting");
     try {
-      rec.current.start();
-      setHeld(true);
-    } catch {
-      /* already started */
+      const input = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true },
+      });
+      if (!mounted.current) {
+        input.getTracks().forEach((t) => t.stop());
+        return;
+      }
+      stream.current = input;
+      const mime = ["audio/webm;codecs=opus", "audio/mp4", "audio/ogg;codecs=opus"].find((m) =>
+        MediaRecorder.isTypeSupported(m),
+      );
+      const recording = new MediaRecorder(input, mime ? { mimeType: mime } : undefined);
+      const chunks: Blob[] = [];
+      recorder.current = recording;
+      recording.ondataavailable = (e) => {
+        if (e.data.size) chunks.push(e.data);
+      };
+      recording.onstop = async () => {
+        if (timer.current) clearTimeout(timer.current);
+        input.getTracks().forEach((t) => t.stop());
+        if (!mounted.current) return;
+        setPhase("transcribing");
+        try {
+          const blob = new Blob(chunks, { type: recording.mimeType });
+          if (!blob.size) throw new Error("No audio captured. Check your microphone and retry.");
+          const audio = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onerror = reject;
+            reader.onload = () => resolve(String(reader.result).split(",")[1] ?? "");
+            reader.readAsDataURL(blob);
+          });
+          const result = await transcribeUplink({
+            data: { audio, mime: recording.mimeType.split(";")[0] ?? "audio/webm" },
+          });
+          if (!mounted.current) return;
+          if (result.ok) {
+            useMissionStore.setState({ draft: result.text });
+            setMessage("Speech ready — review the mission, then Transmit.");
+          } else setMessage(result.message);
+        } catch (e) {
+          if (mounted.current)
+            setMessage(
+              e instanceof Error ? e.message : "Unable to transcribe. Retry or type your mission.",
+            );
+        } finally {
+          if (mounted.current) setPhase("idle");
+        }
+      };
+      recording.onerror = () => {
+        input.getTracks().forEach((t) => t.stop());
+        setPhase("idle");
+        setMessage("Microphone recording failed. Check microphone access and retry.");
+      };
+      recording.start();
+      setPhase("recording");
+      timer.current = setTimeout(() => {
+        if (recording.state === "recording") recording.stop();
+      }, 30000);
+    } catch (e) {
+      stream.current?.getTracks().forEach((t) => t.stop());
+      setPhase("idle");
+      setMessage(
+        typeof e === "object" && e !== null && "name" in e && e.name === "NotAllowedError"
+          ? "Microphone access denied. Allow microphone access for this preview, then retry."
+          : "Microphone unavailable. Check your input device and retry.",
+      );
     }
   };
-  const up = () => {
-    if (held) rec.current?.stop();
-  };
-
   return (
-    <div className="flex items-center gap-2">
+    <div className="relative">
       <button
-        onPointerDown={down}
-        onPointerUp={up}
-        onPointerLeave={up}
-        disabled={disabled}
+        type="button"
+        onClick={() => void toggle()}
+        disabled={
+          (disabled && phase !== "recording") || phase === "requesting" || phase === "transcribing"
+        }
         aria-label="Push to talk"
-        className={`flex h-9 select-none items-center gap-2 rounded border px-3 font-mono text-[11px] uppercase tracking-widest transition-colors disabled:opacity-40 ${held ? "border-abort/60 bg-abort/15 text-abort" : "border-white/15 bg-well text-label hover:text-log"}`}
+        aria-pressed={phase === "recording"}
+        className={`flex h-9 items-center gap-2 rounded border px-3 font-mono text-[11px] uppercase disabled:opacity-40 ${phase === "recording" ? "border-abort bg-abort/20 text-abort" : "border-white/20 bg-well text-label"}`}
       >
-        <Mic size={12} /> Push to Talk
+        <Mic size={12} />
+        {phase === "recording"
+          ? "Stop recording"
+          : phase === "transcribing"
+            ? "Transcribing…"
+            : phase === "requesting"
+              ? "Allow microphone…"
+              : "Push to talk"}
       </button>
-      {held && (
-        <span className="animate-pulse font-mono text-[10px] uppercase tracking-widest text-abort">
-          ● Receiving Uplink
-        </span>
+      {(message || phase === "recording") && (
+        <div
+          role="status"
+          className="absolute bottom-full right-0 z-50 mb-2 w-64 rounded border border-telemetry/40 bg-card p-3 font-mono text-[11px] text-log"
+        >
+          {phase === "recording" ? "Recording · click again to stop (30 s maximum)." : message}
+        </div>
       )}
     </div>
   );
