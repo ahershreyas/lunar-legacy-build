@@ -194,7 +194,7 @@ describe("Mission lifecycle", () => {
     expect(s.row).toBeCloseTo(687);
     expect(s.samples).toHaveLength(1);
     expect(s.summary?.distanceM).toBeCloseTo(40);
-    expect(s.log.filter((entry) => entry.voice)).toHaveLength(2);
+    expect(s.log.filter((entry) => entry.voice)).toHaveLength(8);
     const sampleInput = think.mock.calls.find(
       ([input]) =>
         input.data.mode === "step" &&
