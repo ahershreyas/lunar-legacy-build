@@ -386,7 +386,7 @@ function completeSortie() {
   fin.appendLog("SYSTEM", "Rover 1 at landing site. Mission sequence complete.", "nominal");
 }
 
-function logRover(d: RoverDecision, prefix?: string, audible = false) {
+function logRover(d: RoverDecision, prefix?: string, audible = true) {
   const tone = d.risk === "HIGH" ? "abort" : d.risk === "MEDIUM" ? "hazard" : "nominal";
   S().appendLog(
     "ROVER 1",
@@ -455,7 +455,7 @@ export async function controlIdleProposal() {
       "CONTROL",
     );
     if (g && !signal.aborted) {
-      S().appendLog("CONTROL", g.transmission, "nominal", false);
+      S().appendLog("CONTROL", g.transmission, "nominal", true);
       set({
         proposal: {
           target: g.target,
