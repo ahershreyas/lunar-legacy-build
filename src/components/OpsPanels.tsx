@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { requestMicrophone } from "../utils/microphone";
 import { transcribeUplink } from "../lib/rover-think.functions";
 import { Mic, X } from "lucide-react";
 import { useMissionStore } from "../store/useMissionStore";
@@ -71,16 +72,22 @@ export function PushToTalk({ disabled }: { disabled: boolean }) {
   const stream = useRef<MediaStream | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mounted = useRef(true);
+  const permission = useRef<AbortController | null>(null);
   useEffect(() => {
     mounted.current = true;
     return () => {
       mounted.current = false;
+      permission.current?.abort();
       if (timer.current) clearTimeout(timer.current);
       if (recorder.current?.state === "recording") recorder.current.stop();
       stream.current?.getTracks().forEach((t) => t.stop());
     };
   }, []);
   const toggle = async () => {
+    if (phase === "requesting") {
+      permission.current?.abort();
+      return;
+    }
     if (phase === "recording") {
       recorder.current?.stop();
       return;
@@ -95,9 +102,9 @@ export function PushToTalk({ disabled }: { disabled: boolean }) {
     }
     setPhase("requesting");
     try {
-      const input = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true },
-      });
+      const controller = new AbortController();
+      permission.current = controller;
+      const input = await requestMicrophone(controller.signal);
       if (!mounted.current) {
         input.getTracks().forEach((t) => t.stop());
         return;
@@ -156,11 +163,12 @@ export function PushToTalk({ disabled }: { disabled: boolean }) {
     } catch (e) {
       stream.current?.getTracks().forEach((t) => t.stop());
       setPhase("idle");
-      setMessage(
-        typeof e === "object" && e !== null && "name" in e && e.name === "NotAllowedError"
-          ? "Microphone access denied. Allow microphone access for this preview, then retry."
-          : "Microphone unavailable. Check your input device and retry.",
-      );
+      if (mounted.current)
+        setMessage(
+          e instanceof Error
+            ? e.message
+            : "Microphone unavailable. Check your input device and retry.",
+        );
     }
   };
   return (
@@ -169,7 +177,7 @@ export function PushToTalk({ disabled }: { disabled: boolean }) {
         type="button"
         onClick={() => void toggle()}
         disabled={
-          (disabled && phase !== "recording") || phase === "requesting" || phase === "transcribing"
+          (disabled && phase !== "recording" && phase !== "requesting") || phase === "transcribing"
         }
         aria-label="Push to talk"
         aria-pressed={phase === "recording"}
@@ -181,7 +189,7 @@ export function PushToTalk({ disabled }: { disabled: boolean }) {
           : phase === "transcribing"
             ? "Transcribing…"
             : phase === "requesting"
-              ? "Allow microphone…"
+              ? "Cancel microphone request"
               : "Push to talk"}
       </button>
       {(message || phase === "recording") && (

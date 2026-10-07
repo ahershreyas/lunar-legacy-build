@@ -59,6 +59,7 @@ export function GoalInput() {
           Capcom Uplink
         </span>
         <input
+          aria-label="Review or edit mission text"
           maxLength={500}
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
@@ -66,7 +67,7 @@ export function GoalInput() {
           placeholder="State a mission goal in plain English…"
           className="h-9 min-w-40 flex-1 rounded border border-white/10 bg-well px-3 font-mono text-xs text-log placeholder:text-label/60 focus:border-telemetry/50 focus:outline-none"
         />
-        <PushToTalk disabled={running || link !== "READY"} />
+        <PushToTalk disabled={link !== "READY"} />
         <button
           onClick={() => transmit()}
           disabled={running || link !== "READY"}

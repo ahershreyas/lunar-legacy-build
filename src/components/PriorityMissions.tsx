@@ -5,12 +5,14 @@ import type { MissionSuggestion } from "../lib/rover-think.functions";
 export function PriorityMissions() {
   const running = useMissionStore((s) => s.running);
   const link = useMissionStore((s) => s.link);
+  const battery = useMissionStore((s) => s.battery);
+  const sampleCount = useMissionStore((s) => s.samples.length);
   const col = useMissionStore((s) => s.col),
     row = useMissionStore((s) => s.row);
   const [missions, setMissions] = useState<MissionSuggestion[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [origin, setOrigin] = useState({ col, row });
+  const [origin, setOrigin] = useState({ col, row, battery, sampleCount });
   const controller = useRef<AbortController | null>(null);
   useEffect(() => () => controller.current?.abort(), []);
   useEffect(() => {
@@ -33,14 +35,17 @@ export function PriorityMissions() {
         return;
       }
       setMissions(result.missions);
-      setOrigin({ col, row });
+      setOrigin({ col, row, battery, sampleCount });
     } catch {
       if (!c.signal.aborted) setError("Mission briefing interrupted. Retry.");
     } finally {
       if (controller.current === c) setBusy(false);
     }
   };
-  const stale = Math.abs(col - origin.col) + Math.abs(row - origin.row) > 0.1;
+  const stale =
+    Math.abs(col - origin.col) + Math.abs(row - origin.row) > 0.1 ||
+    Math.abs(battery - origin.battery) > 0.2 ||
+    sampleCount !== origin.sampleCount;
   return (
     <section className="space-y-2 p-3 font-mono text-[11px]">
       <div className="text-telemetry">MISSION CONTROL · PRIORITY MISSIONS</div>
@@ -57,7 +62,7 @@ export function PriorityMissions() {
         </p>
       )}
       {stale && missions.length > 0 && (
-        <p className="text-hazard">Rover position changed. Refresh missions before assigning.</p>
+        <p className="text-hazard">Telemetry changed. Refresh missions before assigning.</p>
       )}
       {missions.map((m, i) => (
         <article key={i} className="space-y-2 rounded border border-white/15 bg-well/60 p-2">
