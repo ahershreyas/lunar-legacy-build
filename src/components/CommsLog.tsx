@@ -87,7 +87,7 @@ export function CommsLog() {
       </div>
       <style>{`@keyframes radio-wave {from {transform:scaleY(0.2);opacity:0.4} to {transform:scaleY(1);opacity:1}}`}</style>
       <p className="mb-1 text-[9px] text-label">
-        AUTO RADIO · MISSION HANDOFF ONLY · LIVE TELEMETRY ABOVE ROVER
+        AUTO RADIO · EVERY ROVER 1 AND MISSION CONTROL CALL IS SPOKEN
       </p>
       <p role="status" className="mb-2 text-[10px] text-telemetry">
         {radio}
