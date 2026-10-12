@@ -1,3 +1,8 @@
+
+<img width="2940" height="1912" alt="UMBRA Thumbnail" src="https://github.com/user-attachments/assets/709ec37b-d765-4725-a2d8-3bfadc987880" />
+
+
+
 # Lunar Legacy Build
 
 > I've attached SPEC.md. It's the single source of truth for this build — read it fully
